@@ -27,18 +27,21 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 |---|---|---|
 | 1 | Scaffold, configuración, esquema Prisma, seed, `common/`, salud | ✅ Hecha |
 | 2 | Auth: Passport local + Google OAuth, JWT, refresh rotativo, permisos | ✅ Hecha |
-| 3 | Catálogo, inventario con stock, reportes, generación de PDF | 🔄 **Siguiente** |
+| 3 | Catálogo, inventario con stock, reportes, generación de PDF | ✅ Hecha |
+
+**Con la Fase 3 el backend está completo.** Lo que sigue ocurre entero en el repo del front (Fases 4 a 8); aquí no hay trabajo pendiente salvo lo listado en "Deuda consciente" más abajo.
 
 Plan completo en el repo del front: `C:\Users\Tomas\.claude\plans\ok-voy-a-hacerle-tender-sprout.md`
 
 ### Dónde quedó la Fase 1
 
-Todo verificado, no solo compilado. Migraciones aplicadas y seed ejecutado **contra Supabase**: 215 productos, 14 categorías, 160 marcas, 41 movimientos, 400 líneas, 12.745 unidades de stock. La invariante del ledger se comprueba con esta consulta, que debe devolver `descuadres = 0` y `total_ledger = total_proyeccion`:
+Todo verificado, no solo compilado. Migraciones aplicadas y seed ejecutado **contra Supabase**: 215 productos, 14 categorías, 160 marcas, 41 movimientos, 400 líneas, 12.745 unidades de stock.
+
+La invariante del ledger se comprueba con esta consulta, que debe devolver `descuadres = 0` y `total_ledger = total_proyeccion`. Desde la Fase 3 `quantity_base` va **con signo**, así que es una suma directa y ya no hace falta reconstruir la dirección con un `CASE`:
 
 ```sql
 WITH ledger AS (
-  SELECT mi.product_id,
-         SUM(CASE WHEN m.type = 'OUTBOUND' THEN -mi.quantity_base ELSE mi.quantity_base END) AS from_ledger
+  SELECT mi.product_id, SUM(mi.quantity_base) AS from_ledger
   FROM movement_items mi
   JOIN movements m ON m.id = mi.movement_id
   WHERE m.status = 'CONFIRMED'
@@ -48,10 +51,9 @@ SELECT
   (SELECT COUNT(*) FROM ledger l JOIN stock_levels s ON s.product_id = l.product_id
      WHERE s.quantity_base <> l.from_ledger) AS descuadres,
   (SELECT SUM(from_ledger) FROM ledger) AS total_ledger,
-  (SELECT SUM(quantity_base) FROM stock_levels) AS total_proyeccion;
+  (SELECT SUM(quantity_base) FROM stock_levels) AS total_proyeccion,
+  (SELECT COUNT(*) FROM stock_levels WHERE quantity_base < 0) AS niveles_negativos;
 ```
-
-Existe `/api/v1/health` y nada más. No hay ningún módulo de negocio todavía.
 
 ### Dónde quedó la Fase 2
 
@@ -81,26 +83,44 @@ Decisiones que quedaron tomadas al construirlo:
 
 **Pendiente y consciente**: crear las credenciales OAuth en Google Cloud Console. Consent screen tipo *External* en modo *Testing*, scopes solo `email` y `profile`, cliente *Web application*, y redirect URI `http://localhost:3001/api/v1/auth/google/callback` — carácter por carácter igual a `GOOGLE_CALLBACK_URL`, porque es el error número uno de este flujo. El resto de la Fase 2 no depende de eso.
 
-### Punto de partida de la Fase 3
+### Dónde quedó la Fase 3
 
-`TenantContextService` ya se puebla y `BaseRepository` ya scopea de verdad. **`src/modules/users/` es el módulo a copiar**: repositorio scopeado, service sin HTTP ni Prisma, controller con `@RequirePermissions()`, DTOs que validan y documentan a la vez.
+Verificado contra Supabase, no solo compilado: ciclo completo de movimiento con las existencias cuadrando al final, matriz de permisos ejercida con un usuario `OPERATOR` real, e invariante del ledger en cero descuadres. El contrato OpenAPI expone **30 rutas y 58 esquemas** en `/docs-json`.
 
-Los permisos ya están declarados y solo hay que consumirlos: `CatalogManage`, `MovementCreateOutbound`, `MovementCreateInbound`, `MovementCreateAdjustment`, `MovementCancel`, `MovementReadAll`, `StockRead`, `ReportRead`, `AuditLogRead`.
+| Método | Ruta | Quién |
+|---|---|---|
+| `GET` | `/products` · `/products/:id` | autenticado |
+| `POST` `PATCH` | `/products` · `/products/:id` | `catalog:manage` |
+| `GET` | `/categories` · `/brands` (+ `/:id`) | autenticado |
+| `POST` `PATCH` `DELETE` | `/categories` · `/brands` (+ `/:id`) | `catalog:manage` |
+| `GET` | `/movements` · `/movements/:id` | `movement:read` |
+| `POST` `PATCH` | `/movements` · `/movements/:id` | según el **tipo** del movimiento |
+| `POST` | `/movements/:id/confirm` | según el **tipo** del movimiento |
+| `POST` | `/movements/:id/cancel` | `movement:cancel` |
+| `GET` | `/movements/:id/pdf` | `movement:read` |
+| `GET` | `/stock` · `/stock/low` · `/stock/:productId/kardex` | `stock:read` |
+| `GET` | `/reports/summary` · `/consumption` · `/activity` | `report:read` |
+| `GET` `PATCH` | `/organization` | `organization:manage` |
+| `GET` | `/audit-logs` | `audit:read` |
 
-Qué hay que construir:
+Decisiones que quedaron tomadas al construirlo:
 
-1. **Catálogo** — CRUD de `products`, `categories` y `brands` con paginación por cursor, búsqueda y filtros server-side. Hoy el front se descarga los 215 y filtra en memoria.
-2. **Inventario** — crear movimiento en `DRAFT`, confirmarlo aplicando el delta a `stock_levels` **en la misma transacción**, anularlo revirtiéndolo, kardex por producto y consulta de existencias.
-3. **Reportes** — agregación con `GROUP BY` en SQL y rangos de fecha. Nunca en JavaScript.
-4. **Documents** — `pdf.ts` (472 líneas) migra desde el front, con el branding leído de `organizations` y verificación de que el movimiento pertenece a la organización del solicitante. Hoy en el front es un IDOR abierto.
+- **`quantity_base` va con signo.** El seed lo escribía como magnitud sin signo y guardaba la dirección solo en `movements.type`, así que leer el ledger exigía reconstruirla con un `CASE` y un ajuste **no tenía forma de corregir hacia abajo**. Con signo, `SUM(quantity_base)` sobre movimientos confirmados *es* la existencia. Una migración volteó las líneas de salida ya escritas.
+- **`movements.code` sale de `movement_counters`**, una fila por organización y año, incrementada dentro de la transacción que crea el movimiento. Una secuencia de Postgres no servía: no se puede declarar una por tenant y deja huecos al hacer rollback. La primera extracción de cada año **se auto-inicializa desde el código más alto que ya exista** en el ledger, porque el seed numera por su cuenta y empezar en 1 chocaría.
+- **El código se asigna al crear, y un movimiento nunca se borra.** Un borrador se anula, no se elimina, así que la serie no tiene huecos y se ve que el MOV-000042 se empezó y se abandonó.
+- **La auditoría se escribe explícita desde cada caso de uso**, no con un interceptor. Un interceptor solo ve la forma HTTP: no sabe nombrar la entidad ni qué cambió, y la entrada de una confirmación tiene que confirmarse o revertirse *con* el movimiento. `AuditService.record()` es best-effort (no tumba un login), `recordIn(tx, …)` entra en la transacción del que llama y sí propaga el fallo.
+- **El stock nunca queda negativo, tampoco por ajuste.** Un conteo físico no da negativo, así que un ajuste que deje el nivel bajo cero es un error de captura. La guarda viaja **dentro** del `UPDATE` (`quantity_base >= -delta`); una lectura previa aparte solo existe para poder decir qué producto falta y cuánto.
+- **Los deltas se agrupan por valor**, no por línea: el movimiento de apertura tiene 215 líneas y una sentencia por línea revienta el timeout de transacción contra una base remota.
+- **Una salida o entrada con cantidad negativa se rechaza.** Sin eso, una salida negativa es una entrada registrada por quien nunca recibió ese permiso: se cae la segregación de funciones.
+- **Crear y confirmar no llevan decorador de permiso**, porque cuál aplica depende del tipo guardado en el registro y ningún decorador estático lo ve. El mapa tipo→permiso vive en `permissions.config.ts`, junto a la matriz, y lo lee el service. **No es una excepción a "autorizar en el guard": es la misma definición declarativa, consultada donde sí se conoce el dato.**
+- **Los productos no se borran**, se desactivan: el ledger los referencia. Categorías y marcas sí se borran, pero solo si ningún producto las usa.
+- **Un rango de reporte omitido son los últimos 30 días**, para que una llamada sin filtros no sea un scan completo. `activity` agrupa en la zona horaria de la organización, no la del servidor.
 
-Decisiones que la Fase 3 tiene que tomar, porque no están resueltas:
+### Deuda consciente que queda en este repo
 
-- **Cómo se genera `movements.code`** (`MOV-2026-000123`). El seed lleva un contador en memoria, que no sirve con peticiones concurrentes: dos movimientos simultáneos chocarían contra el `@@unique([organizationId, code])`. Hace falta una secuencia en Postgres o generarlo dentro de la transacción con bloqueo.
-- **Nadie escribe en `audit_logs` todavía.** La tabla existe desde la Fase 1 y `AuditLogRead` está en la matriz, pero ni la autenticación ni la gestión de usuarios registran nada. Decidir si se hace transversal (un interceptor) o explícito en cada caso de uso, y cubrir hacia atrás login, cambio de contraseña y cambios de rol.
-- **El motivo obligatorio en `ADJUSTMENT`** vive a nivel de service: en el esquema `reason` es nullable a propósito, porque solo un tipo de movimiento lo exige. El DTO y el service tienen que imponerlo.
-- **Qué pasa si una salida deja stock negativo.** El plan dice rechazarla; hay que decidir si eso vale también para un ajuste, que por definición corrige hacia ambos lados.
-- **`locations` tiene una sola fila default.** Los movimientos ya la referencian; no construyas la UI de multi-bodega, solo resuelve la default desde el repositorio.
+- **Credenciales de Google OAuth** sin crear en Google Cloud Console (ver arriba). Nada más depende de ello.
+- **El PDF usa las fuentes estándar**, que son WinAnsi: el texto se pliega a Latin-1 antes de dibujar, así que un carácter fuera de ese rango sale como `?`. El arreglo real es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
+- **Sin infraestructura de tests**, por decisión del usuario: es el trabajo de V&V del semestre. Los guiones que verificaron esta fase fueron de un solo uso y no están versionados.
 
 ---
 
@@ -172,7 +192,12 @@ src/
     utils/
   infra/prisma/        PrismaService y PrismaModule
   modules/             un módulo por dominio
-    auth/  users/  health/
+    auth/  users/  organizations/  audit/
+    catalog/           products · categories · brands
+    inventory/         movements · stock · kardex · locations
+    reports/           agregación en SQL
+    documents/         render del PDF de un movimiento
+    health/
   generated/prisma/    cliente de Prisma. GENERADO: no editar, no commitear.
 ```
 
@@ -206,7 +231,8 @@ Lo que todavía NO existe y llega cuando el SaaS sea concreto: alta de organizac
 - `organizations` — el tenant. De aquí sale **todo** el branding: nombre, logo y textos del PDF. Nunca de constantes.
 - `users` · `auth_identities` · `refresh_tokens` — identidad. `passwordHash` es nulo para usuarios solo-Google; `auth_identities` permite tener password y Google a la vez en vez de dos cuentas para el mismo email.
 - `categories` · `brands` · `products` · `locations` — catálogo. `caseSize` define cuántas unidades sueltas trae una caja.
-- `movements` · `movement_items` — el ledger. Los items guardan `quantityBase` (normalizado con `caseSize`) y un **snapshot** del nombre y la marca, para que un PDF emitido hace un año siga siendo fiel aunque el producto se renombre.
+- `movements` · `movement_items` — el ledger. Los items guardan `quantityBase` (normalizado con `caseSize` y **con signo**: negativo resta) y un **snapshot** del nombre y la marca, para que un PDF emitido hace un año siga siendo fiel aunque el producto se renombre.
+- `movement_counters` — de dónde sale `movements.code`, una fila por organización y año. Ver §2.
 - `stock_levels` — proyección de las existencias. Se actualiza **en la misma transacción** que confirma o anula un movimiento. Se lee en O(1) y siempre es reconstruible desde el ledger.
 - `audit_logs` — quién hizo qué, cuándo y desde dónde.
 
@@ -308,6 +334,16 @@ Un commit reúne un cambio con una sola intención, con un máximo orientativo d
 - **`@Matches` repetido en un mismo campo se pisa.** `class-validator` indexa los errores por nombre de constraint, así que tres `@Matches` reportan uno solo. La política de contraseña usa una única expresión con lookaheads.
 - **Cookie cross-site.** El despliegue previsto es Vercel (front) + Render (API) sin dominio propio, así que la cookie de refresh queda cross-site y obligada a `SameSite=None; Secure`, que Safari bloquea por ITP. Funciona en local y en Chrome/Edge/Firefox; el arreglo real es un dominio propio con `app.` y `api.` bajo el mismo padre.
 - **`prisma init` instala packs de documentación** en `.agents/`, `.claude/` y `.windsurf/`. Son material de referencia local y están gitignoreados; útiles porque Prisma 7 es muy reciente.
+- **`migrate dev` necesita Docker levantado** para la base de sombra. Sin él, la alternativa es generar el SQL comparando contra la base viva y aplicarlo con `deploy`:
+
+  ```bash
+  npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script
+  npx prisma migrate deploy
+  ```
+
+  Los flags cambiaron en Prisma 7: `--from-schema-datasource` ya no existe.
+- **`SUM()` y `COUNT()` en Postgres devuelven `bigint`**, que no sobrevive a `JSON.stringify`. Toda agregación cruda lleva `::int` en la consulta, o `Number()` al salir del repositorio.
+- **`CREATE EXTENSION` no se declara en el esquema.** Exige el preview feature `postgresqlExtensions`, y fijarle esquema (Supabase guarda las extensiones en `extensions`) rompería el Postgres local, que no tiene ese esquema. `pg_trgm` se crea sin calificar dentro de la migración.
 
 ---
 
