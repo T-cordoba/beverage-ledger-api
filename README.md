@@ -118,8 +118,10 @@ El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: t
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Fundaciones: configuración, esquema, seed, `common/`, salud | ✅ |
-| 2 | Autenticación: local + Google OAuth, JWT, refresh rotativo, permisos | 🔄 |
+| 2 | Autenticación: local + Google OAuth, JWT, refresh rotativo, permisos | 🔄 En curso |
 | 3 | Catálogo, inventario, reportes, generación de PDF | ⬜ |
+
+Hoy la API expone únicamente `/api/v1/health` y la documentación en `/docs`. Los módulos de negocio llegan en la Fase 3.
 
 ---
 

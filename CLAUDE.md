@@ -26,10 +26,52 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 | Fase | Qué incluye | Estado |
 |---|---|---|
 | 1 | Scaffold, configuración, esquema Prisma, seed, `common/`, salud | ✅ Hecha |
-| 2 | Auth: Passport local + Google OAuth, JWT, refresh rotativo, permisos | 🔄 Siguiente |
+| 2 | Auth: Passport local + Google OAuth, JWT, refresh rotativo, permisos | 🔄 **En curso** |
 | 3 | Catálogo, inventario con stock, reportes, generación de PDF | ⬜ Pendiente |
 
 Plan completo en el repo del front: `C:\Users\Tomas\.claude\plans\ok-voy-a-hacerle-tender-sprout.md`
+
+### Dónde quedó la Fase 1
+
+Todo verificado, no solo compilado. Migraciones aplicadas y seed ejecutado **contra Supabase**: 215 productos, 14 categorías, 160 marcas, 41 movimientos, 400 líneas, 12.745 unidades de stock. La invariante del ledger se comprueba con esta consulta, que debe devolver `descuadres = 0` y `total_ledger = total_proyeccion`:
+
+```sql
+WITH ledger AS (
+  SELECT mi.product_id,
+         SUM(CASE WHEN m.type = 'OUTBOUND' THEN -mi.quantity_base ELSE mi.quantity_base END) AS from_ledger
+  FROM movement_items mi
+  JOIN movements m ON m.id = mi.movement_id
+  WHERE m.status = 'CONFIRMED'
+  GROUP BY mi.product_id
+)
+SELECT
+  (SELECT COUNT(*) FROM ledger l JOIN stock_levels s ON s.product_id = l.product_id
+     WHERE s.quantity_base <> l.from_ledger) AS descuadres,
+  (SELECT SUM(from_ledger) FROM ledger) AS total_ledger,
+  (SELECT SUM(quantity_base) FROM stock_levels) AS total_proyeccion;
+```
+
+Existe `/api/v1/health` y nada más. No hay ningún módulo de negocio todavía.
+
+### Punto de partida de la Fase 2
+
+Lo que hay que construir, con las decisiones ya tomadas:
+
+1. **`common/permissions/permissions.config.ts`** — la matriz de §6 como una sola estructura declarativa. Se hace primero porque el guard y `/auth/me` dependen de ella.
+2. **Estrategia local** con `passport-local` y `argon2` (no bcrypt). Política de contraseña, bloqueo por intentos y respuestas que **no revelan si un email existe**.
+3. **Estrategia Google** con `passport-google-oauth20` y parámetro `state`. Si el email ya existe con contraseña, se vincula en `auth_identities` en vez de crear una segunda cuenta.
+4. **Tokens** — access JWT corto que el front guarda en memoria, refresh rotativo en cookie httpOnly. `refresh_tokens` ya tiene `tokenHash`, `revokedAt` y `replacedById` para detectar reuso.
+5. **Guards** — `JwtAuthGuard` global con decorador `@Public()`, `RolesGuard` alimentado por la matriz, y `@CurrentUser()`.
+6. **Poblar el `TenantContextService`** desde el usuario autenticado. Hoy nadie lo llama, así que `BaseRepository` falla ruidosamente a propósito; ese es el eslabón que cierra la Fase 2.
+7. **`/auth/me`** devolviendo usuario, organización y permisos efectivos, que es lo que el front consume para ocultar lo que no aplique.
+8. **Módulo de usuarios** — perfil, cambio de contraseña, listado y gestión para el panel de administración.
+
+Detalles que hay que tener en cuenta:
+
+- El usuario sembrado `admin@beverageledger.local` tiene `passwordHash` en null y `status: INVITED`. La Fase 2 debe darle una forma de establecer contraseña, o el seed debe pasar a generarla.
+- Falta añadir al entorno: `JWT_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`. Van en `src/config/env.validation.ts` con Zod, nunca leídos desde `process.env`.
+- Los endpoints de autenticación necesitan un rate limit propio, más estricto que el global de 120/min.
+- **Requiere acción del usuario**: crear las credenciales OAuth en Google Cloud Console. Consent screen tipo *External* en modo *Testing*, scopes solo `email` y `profile`, cliente de tipo *Web application*, y redirect URI `http://localhost:3001/api/v1/auth/google/callback` — que debe coincidir carácter por carácter con la que configure Passport, porque es el error número uno de este flujo.
 
 ---
 
