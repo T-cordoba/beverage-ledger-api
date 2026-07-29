@@ -26,8 +26,8 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 | Fase | Qué incluye | Estado |
 |---|---|---|
 | 1 | Scaffold, configuración, esquema Prisma, seed, `common/`, salud | ✅ Hecha |
-| 2 | Auth: Passport local + Google OAuth, JWT, refresh rotativo, permisos | 🔄 **En curso** |
-| 3 | Catálogo, inventario con stock, reportes, generación de PDF | ⬜ Pendiente |
+| 2 | Auth: Passport local + Google OAuth, JWT, refresh rotativo, permisos | ✅ Hecha |
+| 3 | Catálogo, inventario con stock, reportes, generación de PDF | 🔄 **Siguiente** |
 
 Plan completo en el repo del front: `C:\Users\Tomas\.claude\plans\ok-voy-a-hacerle-tender-sprout.md`
 
@@ -53,25 +53,37 @@ SELECT
 
 Existe `/api/v1/health` y nada más. No hay ningún módulo de negocio todavía.
 
-### Punto de partida de la Fase 2
+### Dónde quedó la Fase 2
 
-Lo que hay que construir, con las decisiones ya tomadas:
+Todo verificado contra Supabase, no solo compilado. Endpoints disponibles:
 
-1. **`common/permissions/permissions.config.ts`** — la matriz de §6 como una sola estructura declarativa. Se hace primero porque el guard y `/auth/me` dependen de ella.
-2. **Estrategia local** con `passport-local` y `argon2` (no bcrypt). Política de contraseña, bloqueo por intentos y respuestas que **no revelan si un email existe**.
-3. **Estrategia Google** con `passport-google-oauth20` y parámetro `state`. Si el email ya existe con contraseña, se vincula en `auth_identities` en vez de crear una segunda cuenta.
-4. **Tokens** — access JWT corto que el front guarda en memoria, refresh rotativo en cookie httpOnly. `refresh_tokens` ya tiene `tokenHash`, `revokedAt` y `replacedById` para detectar reuso.
-5. **Guards** — `JwtAuthGuard` global con decorador `@Public()`, `RolesGuard` alimentado por la matriz, y `@CurrentUser()`.
-6. **Poblar el `TenantContextService`** desde el usuario autenticado. Hoy nadie lo llama, así que `BaseRepository` falla ruidosamente a propósito; ese es el eslabón que cierra la Fase 2.
-7. **`/auth/me`** devolviendo usuario, organización y permisos efectivos, que es lo que el front consume para ocultar lo que no aplique.
-8. **Módulo de usuarios** — perfil, cambio de contraseña, listado y gestión para el panel de administración.
+| Método | Ruta | Quién |
+|---|---|---|
+| `POST` | `/auth/register` | público |
+| `POST` | `/auth/login` | público |
+| `POST` | `/auth/refresh` | cookie de refresh |
+| `POST` | `/auth/logout` | autenticado |
+| `GET` | `/auth/me` | autenticado |
+| `GET` | `/auth/google` · `/auth/google/callback` | público |
+| `PATCH` | `/users/me` · `PUT /users/me/password` | autenticado |
+| `GET` `POST` | `/users` | `user:manage` |
+| `GET` `PATCH` | `/users/:id` | `user:manage` |
 
-Detalles que hay que tener en cuenta:
+Decisiones que quedaron tomadas al construirlo:
 
-- El usuario sembrado `admin@beverageledger.local` tiene `passwordHash` en null y `status: INVITED`. La Fase 2 debe darle una forma de establecer contraseña, o el seed debe pasar a generarla.
-- Falta añadir al entorno: `JWT_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`. Van en `src/config/env.validation.ts` con Zod, nunca leídos desde `process.env`.
-- Los endpoints de autenticación necesitan un rate limit propio, más estricto que el global de 120/min.
-- **Requiere acción del usuario**: crear las credenciales OAuth en Google Cloud Console. Consent screen tipo *External* en modo *Testing*, scopes solo `email` y `profile`, cliente de tipo *Web application*, y redirect URI `http://localhost:3001/api/v1/auth/google/callback` — que debe coincidir carácter por carácter con la que configure Passport, porque es el error número uno de este flujo.
+- **El registro público entra a la organización por defecto como `OPERATOR`** (`DEFAULT_ORGANIZATION_SLUG`). El alta de organizaciones sigue aplazada; un `ORG_ADMIN` promueve desde el panel.
+- **La autenticación es global**: `JwtAuthGuard` está en `APP_GUARD`, así que una ruta nueva nace protegida y hay que marcarla `@Public()` para abrirla. Olvidar el decorador cierra, no expone.
+- **`PermissionsGuard`, no `RolesGuard`** — lee `Permission`, nunca un rol, alimentado por `common/permissions/permissions.config.ts`. Es un no-op en rutas sin `@RequirePermissions()`.
+- **La estrategia de Google se registra solo si hay credenciales.** Sin ellas la API arranca igual y las rutas de Google responden 501. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL` se validan como conjunto: las tres o ninguna.
+- **El callback de Google no devuelve el access token en la URL.** Deja la cookie de refresh y redirige a `FRONTEND_URL/auth/callback`; el front cambia la cookie por un token con `POST /auth/refresh`. Un token en la URL acaba en el historial, en los logs y en el `Referer`.
+- **El JWT no se cree a sí mismo**: `JwtStrategy` relee el usuario en cada petición, de modo que una degradación de rol o una suspensión surten efecto de inmediato y no cuando expire el token.
+- **`SEED_ADMIN_PASSWORD`** (opcional, la lee el seed y no la API) le da contraseña al admin sembrado. Sin ella queda `INVITED` y no puede entrar, que es el default correcto.
+
+**Pendiente y consciente**: crear las credenciales OAuth en Google Cloud Console. Consent screen tipo *External* en modo *Testing*, scopes solo `email` y `profile`, cliente *Web application*, y redirect URI `http://localhost:3001/api/v1/auth/google/callback` — carácter por carácter igual a `GOOGLE_CALLBACK_URL`, porque es el error número uno de este flujo. El resto de la Fase 2 no depende de eso.
+
+### Punto de partida de la Fase 3
+
+`TenantContextService` ya se puebla y `BaseRepository` ya scopea de verdad — `UsersRepository` es el ejemplo a copiar. Queda el dominio: catálogo, movimientos con `stock_levels` en la misma transacción, reportes por agregación SQL y generación de PDF.
 
 ---
 
@@ -113,6 +125,8 @@ El pooler en modo transacción **no puede ejecutar migraciones**. El reparto est
 
 Si una contraseña contiene `/ % @ :` hay que **URL-encodearla** o la conexión falla con un error de parseo poco descriptivo.
 
+`JWT_SECRET` es obligatoria y de 32 caracteres mínimo; genérala con `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Las de Google son opcionales pero se validan **como conjunto**: las tres o ninguna, para que una configuración a medias falle al arrancar y no en mitad del callback.
+
 **Ningún módulo lee `process.env` directamente.** Todo pasa por `src/config/configuration.ts`, que valida el entorno con Zod al arrancar y llega tipado vía `ConfigService<AppConfig, true>`. Si falta o está mal una variable, el proceso no arranca — a diferencia del proyecto original, que fallaba en la primera consulta con un error indescifrable.
 
 ---
@@ -130,13 +144,18 @@ src/
   app.module.ts
   config/              validación del entorno + configuración tipada
   common/
-    filters/           respuesta de error uniforme
+    auth/              AuthenticatedUser: lo que el guard adjunta a la petición
+    decorators/        @Public, @CurrentUser, @RequirePermissions, IsStrongPassword
     dto/               paginación por cursor y tipos compartidos
-    tenant/            TenantContextService (AsyncLocalStorage)
+    filters/           respuesta de error uniforme
+    guards/            JwtAuthGuard y PermissionsGuard, ambos globales
+    permissions/       la matriz de §6, en una sola definición
     repositories/      BaseRepository con scoping automático
+    tenant/            TenantContextService (AsyncLocalStorage) + middleware
+    utils/
   infra/prisma/        PrismaService y PrismaModule
   modules/             un módulo por dominio
-    health/
+    auth/  users/  health/
   generated/prisma/    cliente de Prisma. GENERADO: no editar, no commitear.
 ```
 
@@ -157,7 +176,9 @@ El producto apunta a SaaS a futuro. Hoy solo hay una organización, pero el aisl
 
 - `organizationId` NOT NULL en toda tabla de negocio.
 - `TenantContextService` guarda organización, usuario y rol de la petición en curso. Usa `AsyncLocalStorage` y no un provider request-scoped **a propósito**: un provider request-scoped contagia el scope a todo lo que dependa de él y acabaría reconstruyendo media aplicación en cada petición.
+- Se puebla en dos pasos porque `AsyncLocalStorage.run` tiene que envolver todo lo que viene después y un guard no puede hacerlo: devuelve un booleano y el framework sigue por su cuenta. Así que `TenantContextMiddleware` abre un contenedor vacío y `JwtAuthGuard` lo rellena cuando ya sabe quién llama.
 - `BaseRepository.scopedWhere()` compone el filtro por organización. El spread va al final para que un `where` de entrada no pueda sobrescribirlo.
+- Para actualizar por id se usa `updateMany` y no `update`: acepta un `where` en el que el filtro de organización puede componer, así que un id ajeno no actualiza nada en vez de actualizar la fila de otro cliente.
 
 **Ningún service escribe `organizationId` a mano en una consulta.** Basta un olvido para filtrar datos de otro cliente.
 
@@ -190,7 +211,9 @@ Sigue el principio de **segregación de funciones**: quien mueve la mercancía n
 | Usuarios, roles y organización | ❌ | ❌ | ✅ |
 | Log de auditoría | ❌ | ❌ | ✅ |
 
-La matriz vivirá en **una sola definición declarativa** (`common/permissions/permissions.config.ts`, Fase 2), la consumirá el `RolesGuard` y se expondrá en `/auth/me` para que el front oculte lo que corresponda. Nada de `if (user.role === 'admin')` desperdigado: cuando el SaaS necesite roles configurables por organización, se cambia la fuente de la matriz y no cuarenta condicionales.
+La matriz vive en **una sola definición declarativa** (`common/permissions/permissions.config.ts`), la consume el `PermissionsGuard` vía `@RequirePermissions()` y se expone en `/auth/me` para que el front oculte lo que corresponda. Nada de `if (user.role === 'admin')` desperdigado: cuando el SaaS necesite roles configurables por organización, se cambia la fuente de la matriz y no cuarenta condicionales.
+
+Cada rol se construye ensanchando el anterior, que es lo que significa aquí la segregación de funciones: el operador mueve mercancía, el manager además corrige los números, y solo el admin toca el catálogo al que esos números se refieren. `PLATFORM_ADMIN` no es asignable por un `ORG_ADMIN` (`ASSIGNABLE_ROLES`).
 
 ---
 
@@ -263,6 +286,9 @@ Un commit reúne un cambio con una sola intención, con un máximo orientativo d
 - **Prisma 7 exige un driver adapter.** No hay motor embebido por defecto: `PrismaClient` se construye con `PrismaPg`. La documentación de Prisma 6 que circula por internet no aplica.
 - **El cliente generado vive en `src/generated/prisma`** y está gitignoreado. Tras clonar hay que correr `npm run db:generate` o nada compila.
 - **Solo `PrismaService` y el seed pueden importar `PrismaClient`.** Hay una regla de ESLint que lo impone; los services usan repositorios.
+- **Los guards corren antes que los pipes.** El `ValidationPipe` no ha tocado el body cuando `LocalStrategy` lo lee, así que `LoginDto` es documentación y nada más: el email se normaliza en `AuthService.validateCredentials`. Cualquier estrategia de Passport que dependa de un DTO transformado tiene el mismo problema.
+- **En un `.env` no existe "ausente".** Una variable sin usar queda como `KEY=""` y llega como cadena vacía, que revienta cualquier `min(1)`. Por eso las variables opcionales pasan por el helper `optional()` de `env.validation.ts`, que convierte `''` en `undefined`.
+- **`@Matches` repetido en un mismo campo se pisa.** `class-validator` indexa los errores por nombre de constraint, así que tres `@Matches` reportan uno solo. La política de contraseña usa una única expresión con lookaheads.
 - **Cookie cross-site.** El despliegue previsto es Vercel (front) + Render (API) sin dominio propio, así que la cookie de refresh queda cross-site y obligada a `SameSite=None; Secure`, que Safari bloquea por ITP. Funciona en local y en Chrome/Edge/Firefox; el arreglo real es un dominio propio con `app.` y `api.` bajo el mismo padre.
 - **`prisma init` instala packs de documentación** en `.agents/`, `.claude/` y `.windsurf/`. Son material de referencia local y están gitignoreados; útiles porque Prisma 7 es muy reciente.
 

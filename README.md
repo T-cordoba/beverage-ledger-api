@@ -118,10 +118,16 @@ El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: t
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Fundaciones: configuración, esquema, seed, `common/`, salud | ✅ |
-| 2 | Autenticación: local + Google OAuth, JWT, refresh rotativo, permisos | 🔄 En curso |
-| 3 | Catálogo, inventario, reportes, generación de PDF | ⬜ |
+| 2 | Autenticación: local + Google OAuth, JWT, refresh rotativo, permisos | ✅ |
+| 3 | Catálogo, inventario, reportes, generación de PDF | 🔄 En curso |
 
-Hoy la API expone únicamente `/api/v1/health` y la documentación en `/docs`. Los módulos de negocio llegan en la Fase 3.
+Hoy la API expone salud, autenticación y gestión de usuarios, con la documentación en `/docs`. Los módulos de negocio llegan en la Fase 3.
+
+Toda ruta nueva nace protegida: el `JwtAuthGuard` es global y hay que marcarla `@Public()` para abrirla. Para probar desde Swagger, primero `POST /auth/login` y luego pega el `accessToken` en *Authorize*.
+
+El login con Google solo se activa si defines `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL`; sin ellas la API arranca igual y esas rutas responden 501.
+
+Para que el administrador sembrado pueda entrar, define `SEED_ADMIN_PASSWORD` en tu `.env` y corre `npm run db:seed`. Sin esa variable queda como `INVITED` y sin forma de autenticarse, que es el comportamiento correcto para un repositorio.
 
 ---
 
