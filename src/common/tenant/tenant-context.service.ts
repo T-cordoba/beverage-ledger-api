@@ -8,29 +8,52 @@ export interface TenantStore {
   role: UserRole;
 }
 
+/** Mutable so the middleware can open the context before the guard can fill it. */
+interface TenantStoreHolder {
+  current?: TenantStore;
+}
+
 /**
- * Organization and user behind the current request, populated by the auth guard.
+ * Organization and user behind the current request.
  *
  * Backed by AsyncLocalStorage rather than a request-scoped provider: a
  * request-scoped provider propagates its scope to every dependent, which would
  * rebuild most of the container on each request.
+ *
+ * Filling it takes two steps because `AsyncLocalStorage.run` has to wrap
+ * everything that follows, and a guard cannot do that — it returns a boolean and
+ * the framework continues on its own. So the middleware opens an empty holder
+ * around the request and the auth guard writes into it once it knows who is
+ * calling.
  */
 @Injectable()
 export class TenantContextService {
-  private readonly storage = new AsyncLocalStorage<TenantStore>();
+  private readonly storage = new AsyncLocalStorage<TenantStoreHolder>();
 
-  run<T>(store: TenantStore, callback: () => T): T {
-    return this.storage.run(store, callback);
+  /** Opens an empty context for one request. Called by TenantContextMiddleware. */
+  run<T>(callback: () => T): T {
+    return this.storage.run({}, callback);
+  }
+
+  /** @throws {Error} when no middleware opened a context for this request. */
+  set(store: TenantStore): void {
+    const holder = this.storage.getStore();
+
+    if (!holder) {
+      throw new Error('TenantContextMiddleware did not run for this request.');
+    }
+
+    holder.current = store;
   }
 
   /** Returns undefined on public routes. */
   peek(): TenantStore | undefined {
-    return this.storage.getStore();
+    return this.storage.getStore()?.current;
   }
 
   /** @throws {Error} when called outside an authenticated request. */
   private require(): TenantStore {
-    const store = this.storage.getStore();
+    const store = this.peek();
 
     if (!store) {
       throw new Error(

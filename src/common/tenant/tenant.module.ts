@@ -1,4 +1,5 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { TenantContextMiddleware } from './tenant-context.middleware';
 import { TenantContextService } from './tenant-context.service';
 
 @Global()
@@ -6,4 +7,8 @@ import { TenantContextService } from './tenant-context.service';
   providers: [TenantContextService],
   exports: [TenantContextService],
 })
-export class TenantModule {}
+export class TenantModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantContextMiddleware).forRoutes('{*splat}');
+  }
+}
