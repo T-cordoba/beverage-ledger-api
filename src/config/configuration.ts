@@ -24,6 +24,8 @@ export const configuration = () => {
       origins: parseList(env.CORS_ORIGINS),
     },
 
+    frontendUrl: env.FRONTEND_URL,
+
     swagger: {
       enabled: env.SWAGGER_ENABLED,
     },
@@ -32,6 +34,32 @@ export const configuration = () => {
       ttlSeconds: env.THROTTLE_TTL_SECONDS,
       limit: env.THROTTLE_LIMIT,
     },
+
+    jwt: {
+      secret: env.JWT_SECRET,
+      accessTtl: env.JWT_ACCESS_TTL,
+      refreshTtl: env.JWT_REFRESH_TTL,
+    },
+
+    authCookie: {
+      name: env.AUTH_COOKIE_NAME,
+    },
+
+    login: {
+      maxAttempts: env.LOGIN_MAX_ATTEMPTS,
+      lockoutMinutes: env.LOGIN_LOCKOUT_MINUTES,
+    },
+
+    defaultOrganizationSlug: env.DEFAULT_ORGANIZATION_SLUG,
+
+    /** Null when no credentials are configured; the Google routes then 501. */
+    google: env.GOOGLE_CLIENT_ID
+      ? {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET as string,
+          callbackUrl: env.GOOGLE_CALLBACK_URL as string,
+        }
+      : null,
   };
 };
 
