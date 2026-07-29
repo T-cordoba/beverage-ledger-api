@@ -285,7 +285,8 @@ model MovementItem {
   productId    String       @map("product_id") @db.Uuid
   quantity     Int
   unit         MovementUnit
-  /// quantity normalized to singles. The only thing that moves stock.
+  /// quantity normalized to singles, and signed: negative takes stock away.
+  /// Summing this column over confirmed movements is the stock on hand.
   quantityBase Int          @map("quantity_base")
 
   productNameSnapshot String  @map("product_name_snapshot")

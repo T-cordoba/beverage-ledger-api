@@ -218,7 +218,14 @@ async function main(): Promise<void> {
   ): Promise<void> {
     sequence += 1;
     const code = movementCode(year, sequence);
-    const sign = type === MovementType.OUTBOUND ? -1 : 1;
+
+    // quantity_base carries the direction, so the delta it applies to stock is
+    // the value itself. See the note on MovementItem in schema.prisma.
+    const quantityBaseOf = (line: (typeof lines)[number]): number => {
+      const magnitude =
+        line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity;
+      return type === MovementType.OUTBOUND ? -magnitude : magnitude;
+    };
 
     // Grouped by delta because the opening movement has 215 lines, and one
     // update per line blows past the transaction timeout against a remote
@@ -226,8 +233,7 @@ async function main(): Promise<void> {
     const productIdsByDelta = new Map<number, string[]>();
 
     for (const line of lines) {
-      const delta =
-        sign * (line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity);
+      const delta = quantityBaseOf(line);
       const bucket = productIdsByDelta.get(delta);
 
       if (bucket) {
@@ -255,8 +261,7 @@ async function main(): Promise<void> {
                 productId: line.productId,
                 quantity: line.quantity,
                 unit: line.unit,
-                quantityBase:
-                  line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity,
+                quantityBase: quantityBaseOf(line),
                 productNameSnapshot: line.name,
                 brandNameSnapshot: line.brandName,
               })),
