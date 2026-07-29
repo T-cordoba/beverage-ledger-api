@@ -1,0 +1,47 @@
+# Postgres local para desarrollo.
+#
+#   db     -> base de desarrollo, alternativa a Supabase para trabajar sin red.
+#   shadow -> base de sombra que `prisma migrate dev` crea y destruye para
+#             detectar drift. El rol de aplicación de Supabase no puede hacerlo.
+#
+#   docker compose up -d
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: beverage-ledger-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: beverage_ledger
+    ports:
+      # 5434 y no 5432 para no chocar con un Postgres instalado en la máquina.
+      - '5434:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  shadow:
+    image: postgres:17-alpine
+    container_name: beverage-ledger-shadow
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: beverage_ledger_shadow
+    ports:
+      - '5433:5432'
+    # Sin volumen: es efímera por definición.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
