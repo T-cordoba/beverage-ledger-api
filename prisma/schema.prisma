@@ -1,0 +1,349 @@
+// Beverage Ledger — esquema de datos.
+//
+// Convenciones (ver CLAUDE.md):
+//   - Modelos y campos en inglés y camelCase; tablas y columnas en snake_case vía @map.
+//   - Toda tabla de negocio lleva organizationId: el producto es tenant-ready desde
+//     la primera migración aunque hoy solo exista una organización.
+//   - La fuente de verdad del inventario es movement_items (ledger inmutable).
+//     stock_levels es una proyección que se actualiza en la misma transacción.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+/// PLATFORM_ADMIN existe para el futuro SaaS: opera por encima de la organización.
+enum UserRole {
+  PLATFORM_ADMIN
+  ORG_ADMIN
+  MANAGER
+  OPERATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum AuthProvider {
+  GOOGLE
+}
+
+/// INBOUND suma stock, OUTBOUND resta, ADJUSTMENT corrige en cualquier dirección
+/// y exige motivo. Ver la matriz de permisos en CLAUDE.md.
+enum MovementType {
+  INBOUND
+  OUTBOUND
+  ADJUSTMENT
+}
+
+enum MovementStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+/// La unidad en la que el usuario capturó la línea. quantityBase la normaliza
+/// a unidades sueltas usando Product.caseSize.
+enum MovementUnit {
+  BOTTLE
+  CASE
+}
+
+// ---------------------------------------------------------------------------
+// Identidad y tenancy
+// ---------------------------------------------------------------------------
+
+/// El tenant. Todo el branding (nombre, logo, textos del PDF) sale de aquí y
+/// nunca de constantes en el código.
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  legalName String?  @map("legal_name")
+  logoUrl   String?  @map("logo_url")
+  timezone  String   @default("America/Bogota")
+  /// Ajustes libres por organización (formato de documentos, preferencias de UI).
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  categories  Category[]
+  brands      Brand[]
+  products    Product[]
+  locations   Location[]
+  movements   Movement[]
+  stockLevels StockLevel[]
+  auditLogs   AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  organizationId  String     @map("organization_id") @db.Uuid
+  email           String
+  name            String
+  avatarUrl       String?    @map("avatar_url")
+  /// Nulo cuando el usuario solo entra con Google.
+  passwordHash    String?    @map("password_hash")
+  role            UserRole   @default(OPERATOR)
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  identities       AuthIdentity[]
+  refreshTokens    RefreshToken[]
+  createdMovements Movement[]     @relation("MovementCreatedBy")
+  auditLogs        AuditLog[]
+
+  /// El email es único dentro de la organización, no globalmente: la misma persona
+  /// podrá pertenecer a dos negocios cuando el SaaS lo permita.
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+/// Proveedores OAuth vinculados. Permite que un usuario tenga password y Google
+/// a la vez en lugar de acabar con dos cuentas para el mismo email.
+model AuthIdentity {
+  id                String       @id @default(uuid()) @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
+  provider          AuthProvider
+  providerAccountId String       @map("provider_account_id")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("auth_identities")
+}
+
+/// Se guarda el hash, nunca el token. revokedAt + replacedById permiten rotación
+/// con detección de reuso.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  ipAddress    String?   @map("ip_address")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo
+// ---------------------------------------------------------------------------
+
+/// Antes era la columna `tipo` como texto libre dentro de la tabla de licores.
+model Category {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("categories")
+}
+
+/// Antes era la columna `brand` como texto libre.
+model Brand {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("brands")
+}
+
+model Product {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  categoryId     String   @map("category_id") @db.Uuid
+  brandId        String?  @map("brand_id") @db.Uuid
+  name           String
+  subcategory    String?
+  /// Graduación alcohólica en porcentaje.
+  abv            Decimal? @db.Decimal(5, 2)
+  origin         String?
+  age            String?
+  /// Unidades sueltas por caja. Normaliza las cantidades a unidades base.
+  caseSize       Int      @default(12) @map("case_size")
+  /// Umbral de reposición. Nulo = sin alerta configurada.
+  minimumStock   Int?     @map("minimum_stock")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand         Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  movementItems MovementItem[]
+  stockLevels   StockLevel[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@index([categoryId])
+  @@index([brandId])
+  @@map("products")
+}
+
+/// Dónde vive el stock. Hoy se siembra una sola fila por organización; deja el
+/// multi-bodega modelado sin construir la interfaz todavía.
+model Location {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  isDefault      Boolean  @default(false) @map("is_default")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  movements    Movement[]
+  stockLevels  StockLevel[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("locations")
+}
+
+// ---------------------------------------------------------------------------
+// Inventario
+// ---------------------------------------------------------------------------
+
+model Movement {
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @map("organization_id") @db.Uuid
+  /// Código legible para humanos: MOV-2026-000123.
+  code            String
+  type            MovementType
+  status          MovementStatus @default(DRAFT)
+  locationId      String         @map("location_id") @db.Uuid
+  /// Cuándo ocurrió el movimiento, que no tiene por qué ser cuándo se registró.
+  occurredAt      DateTime       @map("occurred_at")
+  /// Obligatorio a nivel de servicio cuando type = ADJUSTMENT.
+  reason          String?
+  note            String?
+  createdByUserId String         @map("created_by_user_id") @db.Uuid
+  confirmedAt     DateTime?      @map("confirmed_at")
+  cancelledAt     DateTime?      @map("cancelled_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location     Location       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy    User           @relation("MovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items        MovementItem[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, occurredAt(sort: Desc)])
+  @@index([organizationId, status])
+  @@index([createdByUserId])
+  @@map("movements")
+}
+
+/// La fuente de verdad del inventario. Los snapshots de nombre y marca hacen que
+/// un PDF emitido hace un año siga siendo fiel aunque el producto se renombre.
+model MovementItem {
+  id           String       @id @default(uuid()) @db.Uuid
+  movementId   String       @map("movement_id") @db.Uuid
+  productId    String       @map("product_id") @db.Uuid
+  /// Cantidad tal y como la capturó el usuario, en la unidad elegida.
+  quantity     Int
+  unit         MovementUnit
+  /// quantity normalizada a unidades sueltas. Es lo único que mueve el stock.
+  quantityBase Int          @map("quantity_base")
+
+  productNameSnapshot String  @map("product_name_snapshot")
+  brandNameSnapshot   String? @map("brand_name_snapshot")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  movement Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([movementId])
+  @@index([productId])
+  @@map("movement_items")
+}
+
+/// Proyección materializada del ledger. Se actualiza en la misma transacción que
+/// confirma o anula un movimiento, y siempre es reconstruible desde movement_items.
+model StockLevel {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  /// Existencias en unidades sueltas.
+  quantityBase   Int      @default(0) @map("quantity_base")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location     Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationId])
+  @@index([organizationId])
+  @@map("stock_levels")
+}
+
+// ---------------------------------------------------------------------------
+// Auditoría
+// ---------------------------------------------------------------------------
+
+/// Quién hizo qué, cuándo y desde dónde. userId es nulo para acciones del sistema.
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  action         String
+  entity         String
+  entityId       String?  @map("entity_id")
+  metadata       Json     @default("{}")
+  ipAddress      String?  @map("ip_address")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
