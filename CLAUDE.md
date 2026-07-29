@@ -15,7 +15,7 @@ La fuente de verdad del inventario es un **ledger inmutable** de líneas de movi
 | | Repositorio | Stack |
 |---|---|---|
 | Backend | `beverage-ledger-api` (este) → `C:\VisualProjects\beverage-ledger-api` | NestJS 11, Prisma 7, Supabase Postgres |
-| Frontend | [`beverage-ledger`](https://github.com/T-cordoba/encore-beverage-ledger) → `C:\VisualProjects\beverage-ledger` | Next.js 15, TypeScript, Tailwind |
+| Frontend | [`beverage-ledger`](https://github.com/T-cordoba/beverage-ledger) → `C:\VisualProjects\beverage-ledger` | Next.js 15, TypeScript, Tailwind |
 
 Nació de una reescritura: el proyecto original era una sola app de Next.js con dos archivos de SQL sin validación, sin autenticación y sin esquema versionado. Ver §9.
 
