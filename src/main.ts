@@ -2,6 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -20,6 +21,10 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix(apiPrefix);
 
   app.use(helmet());
+
+  // The refresh token travels as an httpOnly cookie, so it has to be parsed
+  // before any guard can read it.
+  app.use(cookieParser());
 
   // credentials is required for the refresh cookie introduced with auth.
   app.enableCors({
@@ -49,6 +54,7 @@ async function bootstrap(): Promise<void> {
       .setDescription('Liquor inventory management')
       .setVersion('0.1.0')
       .addBearerAuth()
+      .addCookieAuth(config.get('authCookie', { infer: true }).name)
       .build();
 
     const document = SwaggerModule.createDocument(app, documentConfig);

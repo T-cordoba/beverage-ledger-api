@@ -2,10 +2,14 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 import { TenantModule } from './common/tenant/tenant.module';
 import { configuration, type AppConfig } from './config/configuration';
 import { PrismaModule } from './infra/prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -26,8 +30,17 @@ import { HealthModule } from './modules/health/health.module';
     PrismaModule,
     TenantModule,
 
+    AuthModule,
+    UsersModule,
     HealthModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    // Order matters: rate limit before authenticating, authenticate before
+    // authorizing. Authentication is global so a new route is protected unless it
+    // says otherwise with @Public().
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
+  ],
 })
 export class AppModule {}
