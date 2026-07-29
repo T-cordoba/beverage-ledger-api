@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { durationToSeconds } from '../../common/utils/duration';
 import type { AppConfig } from '../../config/configuration';
+import { AuditModule } from '../audit/audit.module';
 import { AuthCookieService } from './auth-cookie.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -38,6 +39,7 @@ const googleStrategyProvider: Provider = {
 
 @Module({
   imports: [
+    AuditModule,
     PassportModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

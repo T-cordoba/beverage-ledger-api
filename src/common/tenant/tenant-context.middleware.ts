@@ -7,7 +7,7 @@ import { TenantContextService } from './tenant-context.service';
 export class TenantContextMiddleware implements NestMiddleware {
   constructor(private readonly tenant: TenantContextService) {}
 
-  use(_request: Request, _response: Response, next: NextFunction): void {
-    this.tenant.run(next);
+  use(request: Request, _response: Response, next: NextFunction): void {
+    this.tenant.run(request.ip, next);
   }
 }

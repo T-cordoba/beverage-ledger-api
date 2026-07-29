@@ -7,6 +7,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
 import { TenantModule } from './common/tenant/tenant.module';
 import { configuration, type AppConfig } from './config/configuration';
 import { PrismaModule } from './infra/prisma/prisma.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
@@ -30,6 +31,7 @@ import { UsersModule } from './modules/users/users.module';
     PrismaModule,
     TenantModule,
 
+    AuditModule,
     AuthModule,
     UsersModule,
     HealthModule,

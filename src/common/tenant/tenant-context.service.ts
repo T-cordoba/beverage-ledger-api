@@ -10,6 +10,8 @@ export interface TenantStore {
 
 /** Mutable so the middleware can open the context before the guard can fill it. */
 interface TenantStoreHolder {
+  /** Known from the first middleware, so it is available on public routes too. */
+  ipAddress?: string;
   current?: TenantStore;
 }
 
@@ -30,9 +32,9 @@ interface TenantStoreHolder {
 export class TenantContextService {
   private readonly storage = new AsyncLocalStorage<TenantStoreHolder>();
 
-  /** Opens an empty context for one request. Called by TenantContextMiddleware. */
-  run<T>(callback: () => T): T {
-    return this.storage.run({}, callback);
+  /** Opens the context for one request. Called by TenantContextMiddleware. */
+  run<T>(ipAddress: string | undefined, callback: () => T): T {
+    return this.storage.run({ ipAddress }, callback);
   }
 
   /** @throws {Error} when no middleware opened a context for this request. */
@@ -75,5 +77,10 @@ export class TenantContextService {
 
   get role(): UserRole {
     return this.require().role;
+  }
+
+  /** Available on public routes as well, which is where sign-ins are audited. */
+  get ipAddress(): string | null {
+    return this.storage.getStore()?.ipAddress ?? null;
   }
 }

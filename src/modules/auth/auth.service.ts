@@ -10,6 +10,8 @@ import type { AuthenticatedUser } from '../../common/auth/authenticated-user';
 import { permissionsFor } from '../../common/permissions/permissions.config';
 import type { AppConfig } from '../../config/configuration';
 import { AuthProvider, UserRole, UserStatus } from '../../generated/prisma/enums';
+import { AuditAction, AuditEntity } from '../audit/audit.actions';
+import { AuditService } from '../audit/audit.service';
 import type { CurrentSessionDto, SessionDto, SessionUserDto } from './dto/session.dto';
 import type { RegisterDto } from './dto/credentials.dto';
 import { PasswordService } from './password.service';
@@ -49,6 +51,7 @@ export class AuthService {
     private readonly users: AuthRepository,
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
+    private readonly audit: AuditService,
     config: ConfigService<AppConfig, true>,
   ) {
     const login = config.get('login', { infer: true });
@@ -89,6 +92,15 @@ export class AuthService {
       status: UserStatus.ACTIVE,
     });
 
+    await this.audit.record({
+      action: AuditAction.UserRegistered,
+      entity: AuditEntity.User,
+      entityId: created.id,
+      organizationId: organization.id,
+      userId: created.id,
+      metadata: { email: created.email },
+    });
+
     return this.toAuthenticatedUser(created);
   }
 
@@ -107,17 +119,21 @@ export class AuthService {
 
     if (!user || user.status !== UserStatus.ACTIVE || !user.passwordHash || this.isLocked(user)) {
       await this.passwords.verifyDecoy(password);
+      // An unknown email has no organization to file an audit entry under, so
+      // only attempts against a real account are recorded.
+      if (user) {
+        await this.recordSignInFailure(user, this.isLocked(user) ? 'locked' : 'not-signable');
+      }
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     if (!(await this.passwords.verify(user.passwordHash, password))) {
       await this.registerFailedAttempt(user);
+      await this.recordSignInFailure(user, 'bad-password');
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
-    await this.users.markLoginSucceeded(user.id);
-
-    return this.toAuthenticatedUser(user);
+    return this.completeSignIn(user, 'password');
   }
 
   /**
@@ -140,8 +156,7 @@ export class AuthService {
         throw new UnauthorizedException('This account is suspended');
       }
 
-      await this.users.markLoginSucceeded(linked.id);
-      return this.toAuthenticatedUser(linked);
+      return this.completeSignIn(linked, 'google');
     }
 
     const existing = await this.users.findByEmail(profile.email);
@@ -153,9 +168,8 @@ export class AuthService {
 
       await this.users.linkIdentity(existing.id, AuthProvider.GOOGLE, profile.providerAccountId);
       const confirmed = await this.users.confirmGoogleLink(existing.id, profile.avatarUrl);
-      await this.users.markLoginSucceeded(confirmed.id);
 
-      return this.toAuthenticatedUser(confirmed);
+      return this.completeSignIn(confirmed, 'google');
     }
 
     const organization = await this.users.findOrganizationBySlug(this.defaultOrganizationSlug);
@@ -179,9 +193,17 @@ export class AuthService {
     });
 
     await this.users.linkIdentity(created.id, AuthProvider.GOOGLE, profile.providerAccountId);
-    await this.users.markLoginSucceeded(created.id);
 
-    return this.toAuthenticatedUser(created);
+    await this.audit.record({
+      action: AuditAction.UserRegistered,
+      entity: AuditEntity.User,
+      entityId: created.id,
+      organizationId: created.organizationId,
+      userId: created.id,
+      metadata: { email: created.email, method: 'google' },
+    });
+
+    return this.completeSignIn(created, 'google');
   }
 
   async issueSession(user: AuthenticatedUser, origin: RequestOrigin): Promise<IssuedSession> {
@@ -257,6 +279,35 @@ export class AuthService {
     }
 
     return this.toAuthenticatedUser(user);
+  }
+
+  private async completeSignIn(
+    user: UserCredentials,
+    method: 'password' | 'google',
+  ): Promise<AuthenticatedUser> {
+    await this.users.markLoginSucceeded(user.id);
+
+    await this.audit.record({
+      action: AuditAction.UserSignedIn,
+      entity: AuditEntity.User,
+      entityId: user.id,
+      organizationId: user.organizationId,
+      userId: user.id,
+      metadata: { method },
+    });
+
+    return this.toAuthenticatedUser(user);
+  }
+
+  private recordSignInFailure(user: UserCredentials, cause: string): Promise<void> {
+    return this.audit.record({
+      action: AuditAction.UserSignInFailed,
+      entity: AuditEntity.User,
+      entityId: user.id,
+      organizationId: user.organizationId,
+      userId: user.id,
+      metadata: { cause },
+    });
   }
 
   private isLocked(user: UserCredentials): boolean {

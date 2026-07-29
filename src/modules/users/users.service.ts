@@ -5,8 +5,11 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { toPage } from '../../common/dto/paginate';
 import { ASSIGNABLE_ROLES } from '../../common/permissions/permissions.config';
 import { UserRole, UserStatus } from '../../generated/prisma/enums';
+import { AuditAction, AuditEntity } from '../audit/audit.actions';
+import { AuditService } from '../audit/audit.service';
 import { AuthRepository } from '../auth/repositories/auth.repository';
 import { PasswordService } from '../auth/password.service';
 import { TokenService } from '../auth/token.service';
@@ -27,21 +30,11 @@ export class UsersService {
     private readonly credentials: AuthRepository,
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
+    private readonly audit: AuditService,
   ) {}
 
   async list(limit: number, cursor?: string): Promise<UserPageDto> {
-    const rows = await this.users.findPage(limit, cursor);
-    const hasMore = rows.length > limit;
-    const data = hasMore ? rows.slice(0, limit) : rows;
-
-    return {
-      data,
-      meta: {
-        nextCursor: hasMore ? (data[data.length - 1]?.id ?? null) : null,
-        hasMore,
-        count: data.length,
-      },
-    };
+    return toPage(await this.users.findPage(limit, cursor), limit);
   }
 
   /** @throws {NotFoundException} which is also the answer for another organization's user. */
@@ -86,6 +79,12 @@ export class UsersService {
 
     await this.users.update(userId, { passwordHash: await this.passwords.hash(dto.newPassword) });
     await this.tokens.revokeAllForUser(userId);
+
+    await this.audit.record({
+      action: AuditAction.UserPasswordChanged,
+      entity: AuditEntity.User,
+      entityId: userId,
+    });
   }
 
   /** @throws {ConflictException} when the email is already used in this organization. */
@@ -96,7 +95,7 @@ export class UsersService {
       throw new ConflictException('That email already belongs to a user');
     }
 
-    return this.users.create({
+    const created = await this.users.create({
       email: dto.email,
       name: dto.name,
       role: dto.role,
@@ -104,6 +103,15 @@ export class UsersService {
       status: dto.password ? UserStatus.ACTIVE : UserStatus.INVITED,
       passwordHash: dto.password ? await this.passwords.hash(dto.password) : null,
     });
+
+    await this.audit.record({
+      action: AuditAction.UserCreated,
+      entity: AuditEntity.User,
+      entityId: created.id,
+      metadata: { email: created.email, role: created.role, status: created.status },
+    });
+
+    return created;
   }
 
   /**
@@ -143,6 +151,21 @@ export class UsersService {
     if (dto.status && dto.status !== UserStatus.ACTIVE) {
       await this.tokens.revokeAllForUser(id);
     }
+
+    await this.audit.record({
+      action: AuditAction.UserUpdated,
+      entity: AuditEntity.User,
+      entityId: id,
+      metadata: {
+        // Recording both sides is the point: a role change is the one edit an
+        // auditor reconstructs after the fact.
+        roleFrom: dto.role ? target.role : undefined,
+        roleTo: dto.role,
+        statusFrom: dto.status ? target.status : undefined,
+        statusTo: dto.status,
+        nameChanged: dto.name !== undefined,
+      },
+    });
 
     return this.findOne(id);
   }
