@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as argon2 from 'argon2';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { MovementStatus, MovementType, MovementUnit } from '../src/generated/prisma/enums';
 import { seedProducts } from './data/products';
@@ -24,6 +25,13 @@ const ADMIN = {
   email: 'admin@beverageledger.local',
   name: 'Administrador',
 };
+
+/**
+ * Optional. Without it the admin is seeded as INVITED and cannot sign in, which
+ * is the right default: a password committed to a repository is a password
+ * everyone has.
+ */
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
 
 const DEFAULT_LOCATION = 'Bodega principal';
 const OUTBOUND_MOVEMENTS = 40;
@@ -74,21 +82,36 @@ async function main(): Promise<void> {
     create: { organizationId: organization.id, name: DEFAULT_LOCATION, isDefault: true },
   });
 
-  // No passwordHash: it gets set once the auth module exists. Until then this
-  // user only serves as the author of movements.
+  const passwordHash = ADMIN_PASSWORD
+    ? await argon2.hash(ADMIN_PASSWORD, {
+        type: argon2.argon2id,
+        memoryCost: 19456,
+        timeCost: 2,
+        parallelism: 1,
+      })
+    : null;
+
   const admin = await prisma.user.upsert({
     where: { organizationId_email: { organizationId: organization.id, email: ADMIN.email } },
-    update: {},
+    // Re-running the seed with SEED_ADMIN_PASSWORD set is the supported way to
+    // recover the account, so the update has to apply it too.
+    update: passwordHash ? { passwordHash, status: 'ACTIVE' } : {},
     create: {
       organizationId: organization.id,
       email: ADMIN.email,
       name: ADMIN.name,
       role: 'ORG_ADMIN',
-      status: 'INVITED',
+      passwordHash,
+      status: passwordHash ? 'ACTIVE' : 'INVITED',
     },
   });
 
   console.log(`  organization ${organization.name} · location ${location.name}`);
+  console.log(
+    passwordHash
+      ? `  admin ${ADMIN.email} is ACTIVE with the password from SEED_ADMIN_PASSWORD`
+      : `  admin ${ADMIN.email} is INVITED: set SEED_ADMIN_PASSWORD and re-run to give it a password`,
+  );
 
   const categoryNames = [...new Set(seedProducts.map((product) => product.category))];
   const categoryIdByName = new Map<string, string>();
