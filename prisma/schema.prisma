@@ -62,14 +62,15 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users       User[]
-  categories  Category[]
-  brands      Brand[]
-  products    Product[]
-  locations   Location[]
-  movements   Movement[]
-  stockLevels StockLevel[]
-  auditLogs   AuditLog[]
+  users            User[]
+  categories       Category[]
+  brands           Brand[]
+  products         Product[]
+  locations        Location[]
+  movements        Movement[]
+  movementCounters MovementCounter[]
+  stockLevels      StockLevel[]
+  auditLogs        AuditLog[]
 
   @@map("organizations")
 }
@@ -203,6 +204,9 @@ model Product {
   @@index([organizationId, isActive])
   @@index([categoryId])
   @@index([brandId])
+  /// Trigram index so the catalogue search can stay server-side: a btree index
+  /// cannot serve `name ILIKE '%term%'`, which is the query the search needs.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
   @@map("products")
 }
 
@@ -254,6 +258,23 @@ model Movement {
   @@index([organizationId, status])
   @@index([createdByUserId])
   @@map("movements")
+}
+
+/// Draws the next number for `movements.code`, one row per organization and year.
+///
+/// A Postgres sequence would not do: it cannot be declared per tenant, and it
+/// leaves gaps when a transaction rolls back. Incrementing this row inside the
+/// creating transaction takes a row lock, which serializes numbering per
+/// organization and year and keeps the series gapless.
+model MovementCounter {
+  organizationId String @map("organization_id") @db.Uuid
+  year           Int
+  nextSequence   Int    @default(1) @map("next_sequence")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, year])
+  @@map("movement_counters")
 }
 
 /// The inventory source of truth. Name and brand snapshots keep a year-old PDF
