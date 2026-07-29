@@ -15,9 +15,9 @@ export class HealthController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Estado del servicio y de sus dependencias' })
+  @ApiOperation({ summary: 'Service and dependency status' })
   @ApiOkResponse({ type: HealthResponseDto })
-  @ApiServiceUnavailableResponse({ description: 'Alguna dependencia no responde' })
+  @ApiServiceUnavailableResponse({ description: 'A dependency is not responding' })
   check(): Promise<HealthResponseDto> {
     return this.healthService.check();
   }

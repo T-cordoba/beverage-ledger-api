@@ -1,11 +1,6 @@
-// Beverage Ledger — esquema de datos.
-//
-// Convenciones (ver CLAUDE.md):
-//   - Modelos y campos en inglés y camelCase; tablas y columnas en snake_case vía @map.
-//   - Toda tabla de negocio lleva organizationId: el producto es tenant-ready desde
-//     la primera migración aunque hoy solo exista una organización.
-//   - La fuente de verdad del inventario es movement_items (ledger inmutable).
-//     stock_levels es una proyección que se actualiza en la misma transacción.
+// Models and fields are camelCase in English; tables and columns are snake_case
+// via @map. Every business table carries organizationId so multi-tenancy is a
+// feature to build, not a migration to survive.
 
 generator client {
   provider     = "prisma-client"
@@ -17,11 +12,7 @@ datasource db {
   provider = "postgresql"
 }
 
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
-/// PLATFORM_ADMIN existe para el futuro SaaS: opera por encima de la organización.
+/// PLATFORM_ADMIN operates above the organization, for the future SaaS.
 enum UserRole {
   PLATFORM_ADMIN
   ORG_ADMIN
@@ -39,8 +30,8 @@ enum AuthProvider {
   GOOGLE
 }
 
-/// INBOUND suma stock, OUTBOUND resta, ADJUSTMENT corrige en cualquier dirección
-/// y exige motivo. Ver la matriz de permisos en CLAUDE.md.
+/// INBOUND adds stock, OUTBOUND subtracts, ADJUSTMENT corrects in either
+/// direction and requires a reason.
 enum MovementType {
   INBOUND
   OUTBOUND
@@ -53,19 +44,13 @@ enum MovementStatus {
   CANCELLED
 }
 
-/// La unidad en la que el usuario capturó la línea. quantityBase la normaliza
-/// a unidades sueltas usando Product.caseSize.
+/// Unit the user captured the line in. quantityBase normalizes it to singles.
 enum MovementUnit {
   BOTTLE
   CASE
 }
 
-// ---------------------------------------------------------------------------
-// Identidad y tenancy
-// ---------------------------------------------------------------------------
-
-/// El tenant. Todo el branding (nombre, logo, textos del PDF) sale de aquí y
-/// nunca de constantes en el código.
+/// The tenant. All branding comes from here, never from constants in code.
 model Organization {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -73,7 +58,6 @@ model Organization {
   legalName String?  @map("legal_name")
   logoUrl   String?  @map("logo_url")
   timezone  String   @default("America/Bogota")
-  /// Ajustes libres por organización (formato de documentos, preferencias de UI).
   settings  Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -96,7 +80,7 @@ model User {
   email           String
   name            String
   avatarUrl       String?    @map("avatar_url")
-  /// Nulo cuando el usuario solo entra con Google.
+  /// Null for users who only sign in with Google.
   passwordHash    String?    @map("password_hash")
   role            UserRole   @default(OPERATOR)
   status          UserStatus @default(ACTIVE)
@@ -111,15 +95,15 @@ model User {
   createdMovements Movement[]     @relation("MovementCreatedBy")
   auditLogs        AuditLog[]
 
-  /// El email es único dentro de la organización, no globalmente: la misma persona
-  /// podrá pertenecer a dos negocios cuando el SaaS lo permita.
+  /// Email is unique per organization, not globally, so one person can belong to
+  /// two businesses once the SaaS allows it.
   @@unique([organizationId, email])
   @@index([organizationId])
   @@map("users")
 }
 
-/// Proveedores OAuth vinculados. Permite que un usuario tenga password y Google
-/// a la vez en lugar de acabar con dos cuentas para el mismo email.
+/// Lets a user hold both a password and Google instead of ending up with two
+/// accounts for the same email.
 model AuthIdentity {
   id                String       @id @default(uuid()) @db.Uuid
   userId            String       @map("user_id") @db.Uuid
@@ -134,8 +118,8 @@ model AuthIdentity {
   @@map("auth_identities")
 }
 
-/// Se guarda el hash, nunca el token. revokedAt + replacedById permiten rotación
-/// con detección de reuso.
+/// Stores the hash, never the token. revokedAt and replacedById support rotation
+/// with reuse detection.
 model RefreshToken {
   id           String    @id @default(uuid()) @db.Uuid
   userId       String    @map("user_id") @db.Uuid
@@ -154,11 +138,6 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-// ---------------------------------------------------------------------------
-// Catálogo
-// ---------------------------------------------------------------------------
-
-/// Antes era la columna `tipo` como texto libre dentro de la tabla de licores.
 model Category {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
@@ -176,7 +155,6 @@ model Category {
   @@map("categories")
 }
 
-/// Antes era la columna `brand` como texto libre.
 model Brand {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
@@ -200,13 +178,13 @@ model Product {
   brandId        String?  @map("brand_id") @db.Uuid
   name           String
   subcategory    String?
-  /// Graduación alcohólica en porcentaje.
+  /// Alcohol by volume, as a percentage.
   abv            Decimal? @db.Decimal(5, 2)
   origin         String?
   age            String?
-  /// Unidades sueltas por caja. Normaliza las cantidades a unidades base.
+  /// Singles per case. Normalizes quantities to base units.
   caseSize       Int      @default(12) @map("case_size")
-  /// Umbral de reposición. Nulo = sin alerta configurada.
+  /// Reorder threshold. Null means no alert configured.
   minimumStock   Int?     @map("minimum_stock")
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -225,8 +203,8 @@ model Product {
   @@map("products")
 }
 
-/// Dónde vive el stock. Hoy se siembra una sola fila por organización; deja el
-/// multi-bodega modelado sin construir la interfaz todavía.
+/// Where stock lives. Seeded with a single row, which leaves multi-warehouse
+/// modelled without building the interface for it yet.
 model Location {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
@@ -244,21 +222,17 @@ model Location {
   @@map("locations")
 }
 
-// ---------------------------------------------------------------------------
-// Inventario
-// ---------------------------------------------------------------------------
-
 model Movement {
   id              String         @id @default(uuid()) @db.Uuid
   organizationId  String         @map("organization_id") @db.Uuid
-  /// Código legible para humanos: MOV-2026-000123.
+  /// Human-readable code: MOV-2026-000123.
   code            String
   type            MovementType
   status          MovementStatus @default(DRAFT)
   locationId      String         @map("location_id") @db.Uuid
-  /// Cuándo ocurrió el movimiento, que no tiene por qué ser cuándo se registró.
+  /// When the movement happened, which need not be when it was recorded.
   occurredAt      DateTime       @map("occurred_at")
-  /// Obligatorio a nivel de servicio cuando type = ADJUSTMENT.
+  /// Required at service level when type is ADJUSTMENT.
   reason          String?
   note            String?
   createdByUserId String         @map("created_by_user_id") @db.Uuid
@@ -279,16 +253,15 @@ model Movement {
   @@map("movements")
 }
 
-/// La fuente de verdad del inventario. Los snapshots de nombre y marca hacen que
-/// un PDF emitido hace un año siga siendo fiel aunque el producto se renombre.
+/// The inventory source of truth. Name and brand snapshots keep a year-old PDF
+/// faithful even after the product is renamed.
 model MovementItem {
   id           String       @id @default(uuid()) @db.Uuid
   movementId   String       @map("movement_id") @db.Uuid
   productId    String       @map("product_id") @db.Uuid
-  /// Cantidad tal y como la capturó el usuario, en la unidad elegida.
   quantity     Int
   unit         MovementUnit
-  /// quantity normalizada a unidades sueltas. Es lo único que mueve el stock.
+  /// quantity normalized to singles. The only thing that moves stock.
   quantityBase Int          @map("quantity_base")
 
   productNameSnapshot String  @map("product_name_snapshot")
@@ -304,14 +277,14 @@ model MovementItem {
   @@map("movement_items")
 }
 
-/// Proyección materializada del ledger. Se actualiza en la misma transacción que
-/// confirma o anula un movimiento, y siempre es reconstruible desde movement_items.
+/// Materialized projection of the ledger, updated in the same transaction that
+/// confirms or cancels a movement and always rebuildable from movement_items.
 model StockLevel {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   productId      String   @map("product_id") @db.Uuid
   locationId     String   @map("location_id") @db.Uuid
-  /// Existencias en unidades sueltas.
+  /// Stock on hand, in singles.
   quantityBase   Int      @default(0) @map("quantity_base")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -324,11 +297,7 @@ model StockLevel {
   @@map("stock_levels")
 }
 
-// ---------------------------------------------------------------------------
-// Auditoría
-// ---------------------------------------------------------------------------
-
-/// Quién hizo qué, cuándo y desde dónde. userId es nulo para acciones del sistema.
+/// userId is null for system actions.
 model AuditLog {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

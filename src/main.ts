@@ -21,8 +21,7 @@ async function bootstrap(): Promise<void> {
 
   app.use(helmet());
 
-  // CORS explícito y cerrado por lista. credentials: true hace falta para la
-  // cookie de refresh que llega en la Fase 2.
+  // credentials is required for the refresh cookie introduced with auth.
   app.enableCors({
     origin: origins,
     credentials: true,
@@ -31,9 +30,8 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalPipes(
     new ValidationPipe({
-      // whitelist descarta las propiedades no declaradas en el DTO y
-      // forbidNonWhitelisted las rechaza con un 400. Es lo que impide que llegue
-      // a la base de datos cualquier cosa que venga en el body.
+      // Anything not declared in a DTO is rejected with a 400 rather than
+      // reaching the database.
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
@@ -48,14 +46,14 @@ async function bootstrap(): Promise<void> {
   if (swagger.enabled) {
     const documentConfig = new DocumentBuilder()
       .setTitle('Beverage Ledger API')
-      .setDescription('Gestión de inventario de licores')
+      .setDescription('Liquor inventory management')
       .setVersion('0.1.0')
       .addBearerAuth()
       .build();
 
     const document = SwaggerModule.createDocument(app, documentConfig);
 
-    // El front genera su cliente tipado desde /docs-json (ver CLAUDE.md).
+    // The frontend generates its typed client from /docs-json.
     SwaggerModule.setup('docs', app, document, {
       jsonDocumentUrl: 'docs-json',
       swaggerOptions: { persistAuthorization: true },
@@ -65,9 +63,9 @@ async function bootstrap(): Promise<void> {
   await app.listen(port);
 
   const logger = new Logger('Bootstrap');
-  logger.log(`API escuchando en http://localhost:${port}/${apiPrefix}`);
+  logger.log(`API listening on http://localhost:${port}/${apiPrefix}`);
   if (swagger.enabled) {
-    logger.log(`Swagger en http://localhost:${port}/docs`);
+    logger.log(`Swagger on http://localhost:${port}/docs`);
   }
 }
 

@@ -1,28 +1,22 @@
-# dependencias
 node_modules
 
-# build
 /dist
 *.tsbuildinfo
 
-# variables de entorno
 .env*
 !.env.example
 
-# cliente de Prisma generado: se regenera con `npm run db:generate`
+# Prisma client, regenerated with `npm run db:generate`
 /src/generated
 
-# packs de documentación que instala `prisma init` para asistentes de IA.
-# Son material de referencia local, no código del proyecto.
+# Reference docs installed by `prisma init` for AI assistants
 /.agents
 /.claude
 /.windsurf
 skills-lock.json
 
-# logs
 *.log
 npm-debug.log*
 
-# sistema operativo
 .DS_Store
 Thumbs.db

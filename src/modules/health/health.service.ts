@@ -8,6 +8,7 @@ export class HealthService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /** @throws {ServiceUnavailableException} so a load balancer can tell "alive" from "usable". */
   async check(): Promise<HealthResponseDto> {
     const databaseUp = await this.prisma.isHealthy();
 
@@ -20,12 +21,11 @@ export class HealthService {
       },
     };
 
-    // Un balanceador debe poder distinguir "vivo" de "utilizable" por el código HTTP.
     if (!databaseUp) {
       throw new ServiceUnavailableException({
         statusCode: HttpStatus.SERVICE_UNAVAILABLE,
         error: 'Service Unavailable',
-        message: 'La base de datos no responde',
+        message: 'The database is not responding',
         ...body,
       });
     }

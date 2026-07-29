@@ -5,12 +5,8 @@ import { PrismaClient } from '../../generated/prisma/client';
 import type { AppConfig } from '../../config/configuration';
 
 /**
- * Único punto de acceso a la base de datos. Solo los repositorios lo inyectan;
- * los services trabajan contra repositorios, nunca contra Prisma directamente.
- *
- * Prisma 7 exige un driver adapter: el cliente en runtime va por DATABASE_URL
- * (pooler en modo transacción) mientras que las migraciones usan DIRECT_URL
- * desde prisma.config.ts.
+ * The only entry point to the database. Repositories inject this; services work
+ * against repositories.
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -28,20 +24,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit(): Promise<void> {
     await this.$connect();
-    this.logger.log('Conectado a la base de datos');
+    this.logger.log('Database connected');
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
   }
 
-  /** Comprobación de conectividad para el endpoint de salud. */
   async isHealthy(): Promise<boolean> {
     try {
       await this.$queryRaw`SELECT 1`;
       return true;
     } catch (error) {
-      this.logger.error('Fallo la comprobacion de salud de la base de datos', error);
+      this.logger.error('Database health check failed', error);
       return false;
     }
   }

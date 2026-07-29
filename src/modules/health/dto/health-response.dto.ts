@@ -9,7 +9,7 @@ export class HealthResponseDto {
   @ApiProperty({ enum: ['ok', 'degraded'] })
   status!: 'ok' | 'degraded';
 
-  @ApiProperty({ description: 'Segundos desde que arrancó el proceso' })
+  @ApiProperty({ description: 'Seconds since the process started' })
   uptimeSeconds!: number;
 
   @ApiProperty({ format: 'date-time' })

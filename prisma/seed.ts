@@ -5,18 +5,10 @@ import { MovementStatus, MovementType, MovementUnit } from '../src/generated/pri
 import { seedProducts } from './data/products';
 
 /**
- * Siembra la base de datos.
+ * Seeds the database. Idempotent.
  *
- *   npm run db:seed        estructura mínima: una organización, su administrador,
- *                          el catálogo completo y stock en CERO.
- *   npm run db:seed:demo   lo anterior más un movimiento de apertura con
- *                          cantidades simuladas e histórico de salidas.
- *
- * La distinción importa: un negocio que se da de alta arranca con el inventario
- * vacío y solo tiene existencias cuando alguien registra entradas. El stock
- * simulado existe únicamente para que la demo se vea viva.
- *
- * Es idempotente: se puede ejecutar varias veces sin duplicar nada.
+ *   npm run db:seed        catalogue with stock at ZERO, like a new business
+ *   npm run db:seed:demo   plus an opening movement and simulated history
  */
 
 const DEMO = process.env.SEED_MODE === 'demo';
@@ -34,8 +26,9 @@ const ADMIN = {
 };
 
 const DEFAULT_LOCATION = 'Bodega principal';
+const OUTBOUND_MOVEMENTS = 40;
 
-/** PRNG determinista: la demo debe verse igual en cada máquina. */
+/** Deterministic PRNG so demo data is identical on every machine. */
 function makeRandom(seed: number): () => number {
   let state = seed;
   return () => {
@@ -67,9 +60,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function main(): Promise<void> {
-  console.log(`Sembrando en modo ${DEMO ? 'DEMO' : 'mínimo'}...`);
-
-  // --- Organización, ubicación y administrador ------------------------------
+  console.log(`Seeding in ${DEMO ? 'DEMO' : 'minimal'} mode...`);
 
   const organization = await prisma.organization.upsert({
     where: { slug: ORGANIZATION.slug },
@@ -83,9 +74,8 @@ async function main(): Promise<void> {
     create: { organizationId: organization.id, name: DEFAULT_LOCATION, isDefault: true },
   });
 
-  // Sin passwordHash: la contraseña se establece cuando exista el módulo de
-  // autenticación (Fase 2). Hasta entonces el usuario solo sirve como autor de
-  // los movimientos.
+  // No passwordHash: it gets set once the auth module exists. Until then this
+  // user only serves as the author of movements.
   const admin = await prisma.user.upsert({
     where: { organizationId_email: { organizationId: organization.id, email: ADMIN.email } },
     update: {},
@@ -98,9 +88,7 @@ async function main(): Promise<void> {
     },
   });
 
-  console.log(`  organización ${organization.name} · ubicación ${location.name}`);
-
-  // --- Catálogo -------------------------------------------------------------
+  console.log(`  organization ${organization.name} · location ${location.name}`);
 
   const categoryNames = [...new Set(seedProducts.map((product) => product.category))];
   const categoryIdByName = new Map<string, string>();
@@ -133,14 +121,12 @@ async function main(): Promise<void> {
     brandIdByName.set(name, brand.id);
   }
 
-  console.log(`  ${categoryNames.length} categorías · ${brandNames.length} marcas`);
-
-  const productIds: string[] = [];
+  console.log(`  ${categoryNames.length} categories · ${brandNames.length} brands`);
 
   for (const seedProduct of seedProducts) {
     const categoryId = categoryIdByName.get(seedProduct.category);
     if (!categoryId) {
-      throw new Error(`Categoría no sembrada: ${seedProduct.category}`);
+      throw new Error(`Category was not seeded: ${seedProduct.category}`);
     }
 
     const product = await prisma.product.upsert({
@@ -158,9 +144,6 @@ async function main(): Promise<void> {
       },
     });
 
-    productIds.push(product.id);
-
-    // Toda combinación producto/ubicación arranca con existencias en cero.
     await prisma.stockLevel.upsert({
       where: { productId_locationId: { productId: product.id, locationId: location.id } },
       update: {},
@@ -173,21 +156,19 @@ async function main(): Promise<void> {
     });
   }
 
-  console.log(`  ${productIds.length} productos · stock inicial en cero`);
+  console.log(`  ${seedProducts.length} products · stock at zero`);
 
   if (!DEMO) {
-    console.log('Listo. Inventario vacío, como un negocio recién creado.');
+    console.log('Done. Empty inventory, like a freshly created business.');
     return;
   }
-
-  // --- Datos de demostración ------------------------------------------------
 
   const existingMovements = await prisma.movement.count({
     where: { organizationId: organization.id },
   });
 
   if (existingMovements > 0) {
-    console.log(`Ya existen ${existingMovements} movimientos: no se regeneran.`);
+    console.log(`${existingMovements} movements already exist: not regenerating.`);
     return;
   }
 
@@ -199,7 +180,6 @@ async function main(): Promise<void> {
   const year = new Date().getFullYear();
   let sequence = 0;
 
-  /** Crea un movimiento confirmado y aplica su efecto al stock, en una transacción. */
   async function createConfirmedMovement(
     type: MovementType,
     occurredAt: Date,
@@ -217,10 +197,9 @@ async function main(): Promise<void> {
     const code = movementCode(year, sequence);
     const sign = type === MovementType.OUTBOUND ? -1 : 1;
 
-    // Las líneas se agrupan por delta para no hacer una ida y vuelta por cada una:
-    // el movimiento de apertura tiene 215 líneas y, contra una base remota, 215
-    // updates secuenciales agotan el timeout de la transacción. Agrupados son
-    // tantas consultas como valores distintos de delta haya, que son un puñado.
+    // Grouped by delta because the opening movement has 215 lines, and one
+    // update per line blows past the transaction timeout against a remote
+    // database. Grouped, it is one query per distinct delta.
     const productIdsByDelta = new Map<number, string[]>();
 
     for (const line of lines) {
@@ -269,12 +248,10 @@ async function main(): Promise<void> {
           });
         }
       },
-      // Margen holgado sobre la latencia de red; el trabajo real es de milisegundos.
       { timeout: 30_000, maxWait: 15_000 },
     );
   }
 
-  // 1. Movimiento de apertura: entra todo el catálogo con cantidades simuladas.
   const openingDate = new Date();
   openingDate.setMonth(openingDate.getMonth() - 6);
 
@@ -292,10 +269,7 @@ async function main(): Promise<void> {
     'Inventario de apertura',
   );
 
-  console.log(`  movimiento de apertura con ${products.length} líneas`);
-
-  // 2. Histórico de salidas repartido por los últimos seis meses.
-  const OUTBOUND_MOVEMENTS = 40;
+  console.log(`  opening movement with ${products.length} lines`);
 
   for (let index = 0; index < OUTBOUND_MOVEMENTS; index++) {
     const occurredAt = new Date();
@@ -329,13 +303,13 @@ async function main(): Promise<void> {
     _sum: { quantityBase: true },
   });
 
-  console.log(`  ${OUTBOUND_MOVEMENTS} salidas simuladas`);
-  console.log(`Listo. Existencias totales: ${totalStock._sum.quantityBase ?? 0} unidades.`);
+  console.log(`  ${OUTBOUND_MOVEMENTS} simulated outbound movements`);
+  console.log(`Done. Total stock: ${totalStock._sum.quantityBase ?? 0} units.`);
 }
 
 main()
   .catch((error: unknown) => {
-    console.error('Falló el seed:', error);
+    console.error('Seed failed:', error);
     process.exitCode = 1;
   })
   .finally(() => {

@@ -8,15 +8,14 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    // Las migraciones van por la conexión directa / pooler en modo sesión.
-    // El pooler en modo transacción (puerto 6543) no puede ejecutarlas.
-    // En runtime el cliente usa DATABASE_URL a través del driver adapter,
-    // ver src/infra/prisma/prisma.service.ts.
+    // Migrations go through the direct/session connection: a transaction-mode
+    // pooler cannot run them. The runtime client uses DATABASE_URL instead,
+    // see src/infra/prisma/prisma.service.ts.
     url: env('DIRECT_URL'),
 
-    // `migrate dev` necesita una base de sombra para detectar drift. En Supabase
-    // el rol de la aplicación no puede crear bases, así que apuntamos al Postgres
-    // local de docker-compose.
+    // `migrate dev` creates and drops a shadow database to detect drift, which
+    // Supabase's application role is not allowed to do, so it points at the
+    // local docker-compose Postgres.
     shadowDatabaseUrl: env('SHADOW_DATABASE_URL'),
   },
 });

@@ -6,10 +6,7 @@ const parseList = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-/**
- * Única fuente de configuración de la aplicación. Ningún módulo lee process.env
- * directamente: todo pasa por aquí y llega tipado vía ConfigService.
- */
+/** Single source of configuration. No other module reads `process.env`. */
 export const configuration = () => {
   const env = validateEnv(process.env);
 

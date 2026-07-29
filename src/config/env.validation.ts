@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-/**
- * `z.coerce.boolean()` no sirve aquí: Boolean('false') es true. Esto además
- * rechaza cualquier valor que no sea exactamente 'true' o 'false'.
- */
+/** `z.coerce.boolean()` is unusable here: `Boolean('false')` is `true`. */
 const booleanFromEnv = (defaultValue: 'true' | 'false') =>
   z
     .enum(['true', 'false'])
@@ -13,9 +10,9 @@ const booleanFromEnv = (defaultValue: 'true' | 'false') =>
 const postgresUrl = (name: string) =>
   z
     .string()
-    .min(1, `${name} es obligatoria`)
+    .min(1, `${name} is required`)
     .refine((value) => value.startsWith('postgres://') || value.startsWith('postgresql://'), {
-      message: `${name} debe ser una URL de PostgreSQL. Si la contraseña contiene / % @ o :, recuerda URL-encodearla`,
+      message: `${name} must be a PostgreSQL URL. Passwords containing / % @ or : must be URL-encoded`,
     });
 
 export const envSchema = z.object({
@@ -23,9 +20,9 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().max(65535).default(3001),
   API_PREFIX: z.string().min(1).default('api/v1'),
 
-  /// La usa la aplicación en runtime (pooler en modo transacción).
+  /** Runtime connection, through the transaction-mode pooler. */
   DATABASE_URL: postgresUrl('DATABASE_URL'),
-  /// La usa la CLI de Prisma para migrar (conexión directa o pooler en modo sesión).
+  /** Migration connection. A transaction-mode pooler cannot run migrations. */
   DIRECT_URL: postgresUrl('DIRECT_URL'),
 
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
@@ -39,21 +36,21 @@ export const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 /**
- * Valida el entorno al arrancar y falla con un mensaje accionable.
+ * Validates the environment at startup.
  *
- * El proyecto anterior hacía `process.env.DATABASE_URL!`, que no fallaba al
- * arranque sino en la primera consulta y con un error indescifrable.
+ * @throws {Error} listing every invalid variable, so a misconfiguration stops
+ * the process instead of surfacing on the first query.
  */
 export function validateEnv(raw: Record<string, unknown>): Env {
   const result = envSchema.safeParse(raw);
 
   if (!result.success) {
     const details = result.error.issues
-      .map((issue) => `  - ${issue.path.join('.') || '(raíz)'}: ${issue.message}`)
+      .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
 
     throw new Error(
-      `Configuración de entorno inválida:\n${details}\n\nCompara tu .env con .env.example.`,
+      `Invalid environment configuration:\n${details}\n\nCompare .env against .env.example.`,
     );
   }
 

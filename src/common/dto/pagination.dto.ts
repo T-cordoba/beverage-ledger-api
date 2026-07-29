@@ -3,24 +3,19 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /**
- * Paginación por cursor, no por offset.
+ * Cursor pagination, not offset.
  *
- * Con offset, `skip` obliga a Postgres a recorrer y descartar las filas
- * anteriores, así que el coste crece con la profundidad de la página; y si se
- * insertan filas entre dos peticiones, se repiten o se pierden registros. El
- * cursor no tiene ninguno de los dos problemas.
+ * `skip` makes Postgres walk and discard the preceding rows, so cost grows with
+ * page depth; and rows inserted between requests get duplicated or skipped.
  */
 export class CursorPaginationDto {
-  @ApiPropertyOptional({
-    description: 'Id del último elemento de la página anterior',
-    format: 'uuid',
-  })
+  @ApiPropertyOptional({ description: 'Id of the last item on the previous page', format: 'uuid' })
   @IsOptional()
   @IsString()
   cursor?: string;
 
   @ApiPropertyOptional({
-    description: 'Número de elementos a devolver',
+    description: 'How many items to return',
     minimum: 1,
     maximum: 100,
     default: 25,
@@ -34,13 +29,13 @@ export class CursorPaginationDto {
 }
 
 export class PageMetaDto {
-  @ApiProperty({ description: 'Cursor para pedir la página siguiente', nullable: true })
+  @ApiProperty({ description: 'Cursor for the next page', nullable: true })
   nextCursor!: string | null;
 
-  @ApiProperty({ description: 'Si existen más elementos después de esta página' })
+  @ApiProperty({ description: 'Whether more items exist after this page' })
   hasMore!: boolean;
 
-  @ApiProperty({ description: 'Número de elementos en esta página' })
+  @ApiProperty({ description: 'Number of items on this page' })
   count!: number;
 }
 

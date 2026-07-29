@@ -17,13 +17,7 @@ export interface ErrorResponseBody {
   timestamp: string;
 }
 
-/**
- * Da forma uniforme a todos los errores de la API y, sobre todo, impide que
- * detalles internos salgan por la red.
- *
- * El proyecto anterior no tenía manejo de errores: una excepción del driver
- * llegaba tal cual al cliente en un 500, con el mensaje del motor incluido.
- */
+/** Gives every error a uniform shape and keeps internal detail off the wire. */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -37,8 +31,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const { status, error, message } = this.describe(exception);
 
-    // Anotado como number a propósito: getStatus() devuelve number y comparar
-    // number contra el enum HttpStatus es un error de tipos.
+    // Annotated as number: getStatus() returns number, and comparing it against
+    // the HttpStatus enum is a type error.
     const serverErrorThreshold: number = HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (status >= serverErrorThreshold) {
@@ -68,7 +62,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const payload = exception.getResponse();
 
-      // El ValidationPipe devuelve { message: string[], error, statusCode }.
       if (typeof payload === 'object' && payload !== null) {
         const record = payload as Record<string, unknown>;
         return {
@@ -85,15 +78,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return this.describePrisma(exception);
     }
 
-    if (exception instanceof Prisma.PrismaClientValidationError) {
-      // Siempre es un bug nuestro: una consulta mal construida.
-      return {
-        status: HttpStatus.INTERNAL_SERVER_ERROR,
-        error: 'Internal Server Error',
-        message: this.genericMessage(exception),
-      };
-    }
-
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'Internal Server Error',
@@ -101,10 +85,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
   }
 
-  /**
-   * Traduce los códigos de Prisma a HTTP. Los mensajes son deliberadamente
-   * genéricos: los de Prisma incluyen nombres de tabla y de columna.
-   */
+  /** Messages stay generic: Prisma's own carry table and column names. */
   private describePrisma(exception: Prisma.PrismaClientKnownRequestError): {
     status: number;
     error: string;
@@ -115,35 +96,34 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return {
           status: HttpStatus.CONFLICT,
           error: 'Conflict',
-          message: 'Ya existe un registro con esos datos',
+          message: 'A record with those values already exists',
         };
       case 'P2003':
         return {
           status: HttpStatus.BAD_REQUEST,
           error: 'Bad Request',
-          message: 'La operación referencia un registro que no existe',
+          message: 'The operation references a record that does not exist',
         };
       case 'P2025':
         return {
           status: HttpStatus.NOT_FOUND,
           error: 'Not Found',
-          message: 'El recurso solicitado no existe',
+          message: 'The requested resource does not exist',
         };
       default:
-        this.logger.error(`Error de Prisma sin mapear: ${exception.code}`, exception.message);
+        this.logger.error(`Unmapped Prisma error ${exception.code}`, exception.message);
         return {
           status: HttpStatus.INTERNAL_SERVER_ERROR,
           error: 'Internal Server Error',
-          message: 'Error interno del servidor',
+          message: 'Internal server error',
         };
     }
   }
 
-  /** En producción nunca se filtra el mensaje original. */
   private genericMessage(exception: unknown): string {
     if (this.isProduction) {
-      return 'Error interno del servidor';
+      return 'Internal server error';
     }
-    return exception instanceof Error ? exception.message : 'Error interno del servidor';
+    return exception instanceof Error ? exception.message : 'Internal server error';
   }
 }

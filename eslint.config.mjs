@@ -23,8 +23,8 @@ export default tseslint.config(
   },
   {
     rules: {
-      // A diferencia del scaffold por defecto, `any` es un error: la razón de
-      // separar el backend es tener un contrato tipado de punta a punta.
+      // Stricter than the default scaffold: the point of splitting the backend
+      // out was an end-to-end typed contract.
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-unsafe-argument': 'error',
@@ -38,8 +38,8 @@ export default tseslint.config(
         },
       ],
 
-      // Ver CLAUDE.md: solo los repositorios tocan Prisma. Los services trabajan
-      // contra repositorios para no acoplar la lógica de negocio al ORM.
+      // Only repositories touch Prisma, so business logic stays decoupled from
+      // the ORM.
       'no-restricted-imports': [
         'error',
         {
@@ -58,8 +58,8 @@ export default tseslint.config(
     },
   },
   {
-    // Las dos excepciones legítimas a la regla anterior: PrismaService, que es
-    // quien envuelve al cliente, y el seed, que corre fuera del contenedor de Nest.
+    // The two legitimate exceptions: PrismaService wraps the client, and the
+    // seed runs outside the Nest container.
     files: ['src/infra/prisma/**/*.ts', 'prisma/**/*.ts'],
     rules: {
       'no-restricted-imports': 'off',

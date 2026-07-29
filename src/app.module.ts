@@ -12,8 +12,6 @@ import { HealthModule } from './modules/health/health.module';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      // La validación vive dentro de configuration(): si el entorno está mal,
-      // el proceso no arranca.
       load: [configuration],
     }),
 
@@ -30,10 +28,6 @@ import { HealthModule } from './modules/health/health.module';
 
     HealthModule,
   ],
-  providers: [
-    // Rate limiting global. Los endpoints de autenticación llevarán además
-    // límites más estrictos propios (Fase 2).
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

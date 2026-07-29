@@ -1,10 +1,8 @@
-# Postgres local para desarrollo.
+# Local Postgres for development.
 #
-#   db     -> base de desarrollo, alternativa a Supabase para trabajar sin red.
-#   shadow -> base de sombra que `prisma migrate dev` crea y destruye para
-#             detectar drift. El rol de aplicación de Supabase no puede hacerlo.
-#
-#   docker compose up -d
+#   db     -> working database, an offline alternative to Supabase
+#   shadow -> shadow database `prisma migrate dev` creates and drops to detect
+#             drift, which Supabase's application role is not allowed to do
 
 services:
   db:
@@ -16,7 +14,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: beverage_ledger
     ports:
-      # 5434 y no 5432 para no chocar con un Postgres instalado en la máquina.
+      # 5434, not 5432, to avoid clashing with a locally installed Postgres.
       - '5434:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -36,7 +34,7 @@ services:
       POSTGRES_DB: beverage_ledger_shadow
     ports:
       - '5433:5432'
-    # Sin volumen: es efímera por definición.
+    # No volume: ephemeral by definition.
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

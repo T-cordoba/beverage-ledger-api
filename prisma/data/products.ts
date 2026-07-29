@@ -1,10 +1,5 @@
-// Catálogo semilla: 215 licores.
-//
-// Generado a partir del insert_licores.sql del proyecto original, que a su vez
-// venía de la transcripción de una carta real. Se versiona aquí para que la base
-// de datos sea reproducible desde cero con `npm run db:seed`.
-//
-// No editar a mano si se puede evitar: es dato, no código.
+// Seed catalogue, generated from the original project's insert_licores.sql.
+// This is data, not code: avoid editing it by hand.
 
 export interface SeedProduct {
   name: string;
