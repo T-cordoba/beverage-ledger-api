@@ -10,6 +10,7 @@ import { PrismaModule } from './infra/prisma/prisma.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { HealthModule } from './modules/health/health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -41,6 +42,7 @@ import { UsersModule } from './modules/users/users.module';
     OrganizationsModule,
     CatalogModule,
     InventoryModule,
+    DocumentsModule,
     ReportsModule,
     HealthModule,
   ],
