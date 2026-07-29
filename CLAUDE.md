@@ -83,7 +83,24 @@ Decisiones que quedaron tomadas al construirlo:
 
 ### Punto de partida de la Fase 3
 
-`TenantContextService` ya se puebla y `BaseRepository` ya scopea de verdad — `UsersRepository` es el ejemplo a copiar. Queda el dominio: catálogo, movimientos con `stock_levels` en la misma transacción, reportes por agregación SQL y generación de PDF.
+`TenantContextService` ya se puebla y `BaseRepository` ya scopea de verdad. **`src/modules/users/` es el módulo a copiar**: repositorio scopeado, service sin HTTP ni Prisma, controller con `@RequirePermissions()`, DTOs que validan y documentan a la vez.
+
+Los permisos ya están declarados y solo hay que consumirlos: `CatalogManage`, `MovementCreateOutbound`, `MovementCreateInbound`, `MovementCreateAdjustment`, `MovementCancel`, `MovementReadAll`, `StockRead`, `ReportRead`, `AuditLogRead`.
+
+Qué hay que construir:
+
+1. **Catálogo** — CRUD de `products`, `categories` y `brands` con paginación por cursor, búsqueda y filtros server-side. Hoy el front se descarga los 215 y filtra en memoria.
+2. **Inventario** — crear movimiento en `DRAFT`, confirmarlo aplicando el delta a `stock_levels` **en la misma transacción**, anularlo revirtiéndolo, kardex por producto y consulta de existencias.
+3. **Reportes** — agregación con `GROUP BY` en SQL y rangos de fecha. Nunca en JavaScript.
+4. **Documents** — `pdf.ts` (472 líneas) migra desde el front, con el branding leído de `organizations` y verificación de que el movimiento pertenece a la organización del solicitante. Hoy en el front es un IDOR abierto.
+
+Decisiones que la Fase 3 tiene que tomar, porque no están resueltas:
+
+- **Cómo se genera `movements.code`** (`MOV-2026-000123`). El seed lleva un contador en memoria, que no sirve con peticiones concurrentes: dos movimientos simultáneos chocarían contra el `@@unique([organizationId, code])`. Hace falta una secuencia en Postgres o generarlo dentro de la transacción con bloqueo.
+- **Nadie escribe en `audit_logs` todavía.** La tabla existe desde la Fase 1 y `AuditLogRead` está en la matriz, pero ni la autenticación ni la gestión de usuarios registran nada. Decidir si se hace transversal (un interceptor) o explícito en cada caso de uso, y cubrir hacia atrás login, cambio de contraseña y cambios de rol.
+- **El motivo obligatorio en `ADJUSTMENT`** vive a nivel de service: en el esquema `reason` es nullable a propósito, porque solo un tipo de movimiento lo exige. El DTO y el service tienen que imponerlo.
+- **Qué pasa si una salida deja stock negativo.** El plan dice rechazarla; hay que decidir si eso vale también para un ajuste, que por definición corrige hacia ambos lados.
+- **`locations` tiene una sola fila default.** Los movimientos ya la referencian; no construyas la UI de multi-bodega, solo resuelve la default desde el repositorio.
 
 ---
 
