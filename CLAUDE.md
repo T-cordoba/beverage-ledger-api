@@ -119,7 +119,8 @@ Decisiones que quedaron tomadas al construirlo:
 ### Deuda consciente que queda en este repo
 
 - **Credenciales de Google OAuth** sin crear en Google Cloud Console (ver arriba). Nada más depende de ello.
-- **El PDF usa las fuentes estándar**, que son WinAnsi: el texto se pliega a Latin-1 antes de dibujar, así que un carácter fuera de ese rango sale como `?`. El arreglo real es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
+- **La estructura del documento PDF queda pendiente de revisión.** El layout actual es una migración del que había en el front, con las columnas reducidas a lo que el ledger realmente guarda: nombre y marca del snapshot, cantidad, unidad y unidades base. El resto de los campos del original (origen, ABV, añejamiento, subcategoría) vivían en el blob JSON denormalizado y ahora están en `products`, no en la línea del movimiento — meterlos en el documento significa decidir si se leen del producto actual (y entonces un reimpreso viejo deja de ser fiel) o si el snapshot debe crecer. **Es una decisión de producto, no de código, y se aborda en una fase posterior** junto con la revisión visual del layout.
+- **El PDF usa las fuentes estándar**, que son WinAnsi: 218 caracteres, Windows-1252. Cubre los acentos del español, la raya y las comillas curvas, y `drawText` **lanza excepción** con cualquier cosa fuera de ese juego. `movement-pdf.service.ts` le pregunta a la fuente qué soporta y solo pliega lo que de verdad no cabe (a su letra base, o a `?` como último recurso). El arreglo definitivo es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
 - **Sin infraestructura de tests**, por decisión del usuario: es el trabajo de V&V del semestre. Los guiones que verificaron esta fase fueron de un solo uso y no están versionados.
 
 ---
