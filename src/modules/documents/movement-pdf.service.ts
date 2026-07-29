@@ -5,21 +5,63 @@ import type { MovementDto } from '../inventory/dto/movement.dto';
 import type { OrganizationDto } from '../organizations/dto/organization.dto';
 import { COLOR, COLUMNS, PAGE, TABLE_WIDTH, TEXT } from './movement-pdf.theme';
 
+const COMBINING_MARKS = /[̀-ͯ]/g;
+
 /**
- * The standard fonts are WinAnsi-encoded, so anything outside Latin-1 makes
- * pdf-lib throw while drawing.
+ * The fonts, plus the only safe way to put user text through them.
  *
- * Accents are folded to their base letter rather than dropped, and whatever is
- * left over becomes a question mark: a document that prints "Anejo" is a small
- * problem, one that fails to generate is a large one. Embedding a Unicode font
- * would fix it properly, at the cost of shipping a font file.
+ * A standard font carries no glyph table of its own: it is WinAnsi-encoded, 218
+ * characters, and `drawText` **throws** on anything outside that set. Since
+ * product names and notes are user input, one pasted character from outside
+ * Windows-1252 would turn a download into a 500.
  */
-function toPrintable(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^\x20-\x7e\xa0-\xff]/g, '?');
+interface Typeset {
+  regular: PDFFont;
+  bold: PDFFont;
+  /** Rewrites a string so every character can be drawn. */
+  printable(value: string): string;
 }
+
+/**
+ * Asks the font what it supports instead of assuming a range.
+ *
+ * WinAnsi is wider than Latin-1 — it has the dash, the curly quotes, the ellipsis
+ * — and Spanish accents are in it, so folding by default would print "Anejo" for
+ * no reason. Only what genuinely does not fit is folded to its base letter, and
+ * only what survives neither test becomes a question mark: a document with one
+ * odd character beats a document that refuses to exist.
+ *
+ * Embedding a Unicode font is the real fix, at the cost of versioning a font file.
+ */
+function typesetWith(regular: PDFFont, bold: PDFFont): Typeset {
+  const supported = new Set(regular.getCharacterSet());
+  const canDraw = (text: string): boolean =>
+    [...text].every((character) => supported.has(character.codePointAt(0) ?? -1));
+
+  return {
+    regular,
+    bold,
+    printable: (value) =>
+      [...value]
+        .map((character) => {
+          if (canDraw(character)) {
+            return character;
+          }
+
+          const folded = character.normalize('NFD').replace(COMBINING_MARKS, '');
+
+          return folded !== '' && canDraw(folded) ? folded : '?';
+        })
+        .join(''),
+  };
+}
+
+/**
+ * The document's own copy stays here rather than in the i18n bundle: it is
+ * rendered server-side, so the frontend's message catalogue never sees it.
+ */
+const counted = (value: number, singular: string, plural: string): string =>
+  `${value} ${Math.abs(value) === 1 ? singular : plural}`;
 
 interface Cell {
   text: string;
@@ -37,15 +79,17 @@ export class MovementPdfService {
    */
   async render(movement: MovementDto, organization: OrganizationDto): Promise<Uint8Array> {
     const document = await PDFDocument.create();
-    const regular = await document.embedFont(StandardFonts.Helvetica);
-    const bold = await document.embedFont(StandardFonts.HelveticaBold);
+    const type = typesetWith(
+      await document.embedFont(StandardFonts.Helvetica),
+      await document.embedFont(StandardFonts.HelveticaBold),
+    );
 
     document.setTitle(`${movement.code} - ${organization.name}`);
     document.setProducer('Beverage Ledger');
 
     const rows = movement.items.map((item): Cell[] => [
-      { text: toPrintable(item.productNameSnapshot), align: 'left' },
-      { text: toPrintable(item.brandNameSnapshot ?? '-'), align: 'left' },
+      { text: type.printable(item.productNameSnapshot), align: 'left' },
+      { text: type.printable(item.brandNameSnapshot ?? '-'), align: 'left' },
       { text: String(Math.abs(item.quantity)), align: 'right' },
       { text: this.unitLabel(item.unit, item.quantity), align: 'left' },
       { text: String(Math.abs(item.quantityBase)), align: 'right' },
@@ -53,29 +97,29 @@ export class MovementPdfService {
 
     const pages: PDFPage[] = [];
     let page = this.addPage(document, pages);
-    let y = this.drawFirstPageHeader(page, movement, organization, regular, bold);
+    let y = this.drawFirstPageHeader(page, movement, organization, type);
 
-    y = this.drawTableHeader(page, y, bold);
+    y = this.drawTableHeader(page, y, type);
 
     for (const [index, row] of rows.entries()) {
-      const height = this.rowHeight(row, regular);
+      const height = this.rowHeight(row, type.regular);
 
       if (y - height < PAGE.footerHeight + 40) {
         page = this.addPage(document, pages);
-        y = this.drawContinuationHeader(page, movement, organization, regular, bold);
-        y = this.drawTableHeader(page, y, bold);
+        y = this.drawContinuationHeader(page, movement, organization, type);
+        y = this.drawTableHeader(page, y, type);
       }
 
-      this.drawRow(page, y, row, height, index % 2 === 1, regular);
+      this.drawRow(page, y, row, height, index % 2 === 1, type.regular);
       y -= height;
     }
 
-    this.drawTotals(page, y, movement, regular, bold);
+    this.drawTotals(page, y, movement, type);
 
     // Page numbers are stamped last because the total is only known once every
     // row has found a page.
     pages.forEach((each, index) => {
-      this.drawFooter(each, index + 1, pages.length, organization, regular);
+      this.drawFooter(each, index + 1, pages.length, organization, type);
     });
 
     return document.save();
@@ -87,7 +131,7 @@ export class MovementPdfService {
     return page;
   }
 
-  private drawBanner(page: PDFPage, organization: OrganizationDto, bold: PDFFont): void {
+  private drawBanner(page: PDFPage, organization: OrganizationDto, type: Typeset): void {
     page.drawRectangle({
       x: 0,
       y: PAGE.height - PAGE.headerHeight,
@@ -96,11 +140,11 @@ export class MovementPdfService {
       color: COLOR.dark,
     });
 
-    page.drawText(toPrintable(organization.name.toUpperCase()), {
+    page.drawText(type.printable(organization.name.toUpperCase()), {
       x: PAGE.margin,
       y: PAGE.height - 42,
       size: TEXT.title,
-      font: bold,
+      font: type.bold,
       color: COLOR.onDark,
     });
   }
@@ -109,36 +153,35 @@ export class MovementPdfService {
     page: PDFPage,
     movement: MovementDto,
     organization: OrganizationDto,
-    regular: PDFFont,
-    bold: PDFFont,
+    type: Typeset,
   ): number {
-    this.drawBanner(page, organization, bold);
+    this.drawBanner(page, organization, type);
 
     page.drawText('Movimiento de inventario', {
       x: PAGE.margin,
       y: PAGE.height - 62,
       size: TEXT.subtitle,
-      font: regular,
+      font: type.regular,
       color: COLOR.onDark,
     });
 
     page.drawText(movement.code, {
-      x: PAGE.width - PAGE.margin - bold.widthOfTextAtSize(movement.code, TEXT.heading),
+      x: PAGE.width - PAGE.margin - type.bold.widthOfTextAtSize(movement.code, TEXT.heading),
       y: PAGE.height - 42,
       size: TEXT.heading,
-      font: bold,
+      font: type.bold,
       color: COLOR.accent,
     });
 
     const facts: [string, string][] = [
       ['Tipo', movement.type],
       ['Estado', movement.status],
-      ['Fecha', this.formatDate(movement.occurredAt, organization.timezone)],
-      ['Registrado por', toPrintable(movement.createdBy.name)],
+      ['Fecha', type.printable(this.formatDate(movement.occurredAt, organization.timezone))],
+      ['Registrado por', type.printable(movement.createdBy.name)],
       ...(movement.reason
-        ? ([['Motivo', toPrintable(movement.reason)]] as [string, string][])
+        ? ([['Motivo', type.printable(movement.reason)]] as [string, string][])
         : []),
-      ...(movement.note ? ([['Nota', toPrintable(movement.note)]] as [string, string][]) : []),
+      ...(movement.note ? ([['Nota', type.printable(movement.note)]] as [string, string][]) : []),
     ];
 
     let y = PAGE.height - PAGE.headerHeight - 28;
@@ -148,14 +191,14 @@ export class MovementPdfService {
         x: PAGE.margin,
         y,
         size: TEXT.body,
-        font: bold,
+        font: type.bold,
         color: COLOR.muted,
       });
       page.drawText(value, {
         x: PAGE.margin + 90,
         y,
         size: TEXT.body,
-        font: regular,
+        font: type.regular,
         color: COLOR.ink,
       });
       y -= TEXT.line;
@@ -163,11 +206,11 @@ export class MovementPdfService {
 
     if (organization.legalName) {
       y -= 4;
-      page.drawText(toPrintable(organization.legalName), {
+      page.drawText(type.printable(organization.legalName), {
         x: PAGE.margin,
         y,
         size: TEXT.small,
-        font: regular,
+        font: type.regular,
         color: COLOR.muted,
       });
       y -= TEXT.line;
@@ -180,23 +223,22 @@ export class MovementPdfService {
     page: PDFPage,
     movement: MovementDto,
     organization: OrganizationDto,
-    regular: PDFFont,
-    bold: PDFFont,
+    type: Typeset,
   ): number {
-    this.drawBanner(page, organization, bold);
+    this.drawBanner(page, organization, type);
 
     page.drawText(`${movement.code} (continuación)`, {
       x: PAGE.margin,
       y: PAGE.height - 62,
       size: TEXT.subtitle,
-      font: regular,
+      font: type.regular,
       color: COLOR.onDark,
     });
 
     return PAGE.height - PAGE.headerHeight - 24;
   }
 
-  private drawTableHeader(page: PDFPage, y: number, bold: PDFFont): number {
+  private drawTableHeader(page: PDFPage, y: number, { bold }: Typeset): number {
     const height = 20;
 
     page.drawRectangle({
@@ -275,13 +317,7 @@ export class MovementPdfService {
     }
   }
 
-  private drawTotals(
-    page: PDFPage,
-    y: number,
-    movement: MovementDto,
-    regular: PDFFont,
-    bold: PDFFont,
-  ): void {
+  private drawTotals(page: PDFPage, y: number, movement: MovementDto, type: Typeset): void {
     const singles = movement.items.reduce((total, item) => total + Math.abs(item.quantityBase), 0);
     const box = { width: 200, height: 44 };
     const top = y - 16;
@@ -294,19 +330,19 @@ export class MovementPdfService {
       color: COLOR.accent,
     });
 
-    page.drawText(`TOTAL: ${singles} unidades`, {
+    page.drawText(`TOTAL: ${counted(singles, 'unidad', 'unidades')}`, {
       x: PAGE.width - PAGE.margin - box.width + 12,
       y: top - 20,
       size: TEXT.heading,
-      font: bold,
+      font: type.bold,
       color: COLOR.dark,
     });
 
-    page.drawText(`${movement.items.length} líneas`, {
+    page.drawText(counted(movement.items.length, 'línea', 'líneas'), {
       x: PAGE.width - PAGE.margin - box.width + 12,
       y: top - 34,
       size: TEXT.small,
-      font: regular,
+      font: type.regular,
       color: COLOR.dark,
     });
   }
@@ -316,8 +352,10 @@ export class MovementPdfService {
     pageNumber: number,
     totalPages: number,
     organization: OrganizationDto,
-    font: PDFFont,
+    type: Typeset,
   ): void {
+    const font = type.regular;
+
     page.drawLine({
       start: { x: PAGE.margin, y: PAGE.footerHeight },
       end: { x: PAGE.width - PAGE.margin, y: PAGE.footerHeight },
@@ -325,7 +363,7 @@ export class MovementPdfService {
       color: COLOR.rule,
     });
 
-    page.drawText(toPrintable(`${organization.legalName ?? organization.name}`), {
+    page.drawText(type.printable(organization.legalName ?? organization.name), {
       x: PAGE.margin,
       y: PAGE.footerHeight - 14,
       size: TEXT.small,
@@ -399,13 +437,11 @@ export class MovementPdfService {
   private unitLabel(unit: MovementUnit, quantity: number): string {
     const plural = Math.abs(quantity) !== 1;
 
-    return unit === MovementUnit.CASE
-      ? plural
-        ? 'cajas'
-        : 'caja'
-      : plural
-        ? 'botellas'
-        : 'botella';
+    if (unit === MovementUnit.CASE) {
+      return plural ? 'cajas' : 'caja';
+    }
+
+    return plural ? 'botellas' : 'botella';
   }
 
   private formatDate(value: Date, timezone: string): string {
