@@ -1,4 +1,5 @@
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import type { PrismaTransaction } from '../../infra/prisma/transaction';
 import { TenantContextService } from '../tenant/tenant-context.service';
 
 /**
@@ -24,5 +25,19 @@ export abstract class BaseRepository {
 
   protected scopedData<T extends object>(data: T): T & { organizationId: string } {
     return { ...data, organizationId: this.organizationId };
+  }
+
+  /**
+   * Runs several repository writes as one atomic unit.
+   *
+   * The service gets an opaque handle to pass back into repository methods; it
+   * never issues a query with it. This is what lets a stock change and the
+   * movement that caused it commit or roll back together.
+   */
+  runInTransaction<T>(
+    work: (tx: PrismaTransaction) => Promise<T>,
+    options?: { timeout?: number; maxWait?: number },
+  ): Promise<T> {
+    return this.prisma.$transaction(work, options);
   }
 }

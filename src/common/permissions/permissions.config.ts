@@ -1,4 +1,4 @@
-import { UserRole } from '../../generated/prisma/enums';
+import { MovementType, UserRole } from '../../generated/prisma/enums';
 
 /**
  * Every action the API authorizes, named `<resource>:<action>`.
@@ -54,6 +54,19 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   [UserRole.MANAGER]: MANAGER,
   [UserRole.ORG_ADMIN]: ORG_ADMIN,
   [UserRole.PLATFORM_ADMIN]: Object.values(Permission),
+};
+
+/**
+ * Which permission each kind of movement demands.
+ *
+ * Lives here and not in a controller decorator because the answer depends on the
+ * record: confirming a movement created yesterday has to check the type stored on
+ * it, which no static decorator can see.
+ */
+export const MOVEMENT_PERMISSION: Readonly<Record<MovementType, Permission>> = {
+  [MovementType.INBOUND]: Permission.MovementCreateInbound,
+  [MovementType.OUTBOUND]: Permission.MovementCreateOutbound,
+  [MovementType.ADJUSTMENT]: Permission.MovementCreateAdjustment,
 };
 
 /** Roles an ORG_ADMIN may hand out. PLATFORM_ADMIN is not one of them. */

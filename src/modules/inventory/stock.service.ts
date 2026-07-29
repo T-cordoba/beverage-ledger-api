@@ -1,0 +1,62 @@
+import { Injectable } from '@nestjs/common';
+import { toPage } from '../../common/dto/paginate';
+import { ProductsService } from '../catalog/products.service';
+import type {
+  KardexPageDto,
+  ListKardexDto,
+  ListStockDto,
+  LowStockDto,
+  StockLevelDto,
+  StockPageDto,
+} from './dto/stock.dto';
+import { LocationsService } from './locations.service';
+import { MovementsRepository } from './repositories/movements.repository';
+import { StockRepository } from './repositories/stock.repository';
+
+@Injectable()
+export class StockService {
+  constructor(
+    private readonly stock: StockRepository,
+    private readonly movements: MovementsRepository,
+    private readonly locations: LocationsService,
+    private readonly products: ProductsService,
+  ) {}
+
+  async list(query: ListStockDto): Promise<StockPageDto> {
+    const locationId = await this.locations.resolve(query.locationId);
+
+    const rows = await this.stock.findPage(query.limit, query.cursor, locationId, {
+      search: query.search,
+      categoryId: query.categoryId,
+    });
+
+    return toPage(rows, query.limit, (row) => row.productId);
+  }
+
+  /** What the dashboard shows as needing a reorder. Not paginated: it is a shortlist. */
+  async belowMinimum(query: LowStockDto): Promise<StockLevelDto[]> {
+    const locationId = await this.locations.resolve(query.locationId);
+    const rows = await this.stock.findBelowMinimum(locationId, query.limit);
+
+    return rows.map((row) => ({ ...row, isBelowMinimum: true }));
+  }
+
+  /**
+   * One product's confirmed ledger lines, newest first, each with the balance it
+   * left behind.
+   *
+   * @throws {NotFoundException} when the product is not this organization's.
+   */
+  async kardex(productId: string, query: ListKardexDto): Promise<KardexPageDto> {
+    await this.products.findOne(productId);
+
+    const locationId = await this.locations.resolve(query.locationId);
+    const rows = await this.movements.kardex(productId, locationId, query.limit, query.cursor);
+
+    // SUM over an integer column comes back as bigint, which does not survive
+    // JSON. The running total of a stock column cannot overflow a JS number.
+    const entries = rows.map((row) => ({ ...row, balanceAfter: Number(row.balanceAfter) }));
+
+    return toPage(entries, query.limit);
+  }
+}
