@@ -48,7 +48,7 @@ export default tseslint.config(
               group: ['**/generated/prisma/client'],
               importNamePattern: '^PrismaClient$',
               message:
-                'No instancies PrismaClient directamente: inyecta PrismaService desde infra/prisma.',
+                'Do not instantiate PrismaClient directly: inject PrismaService from infra/prisma.',
             },
           ],
         },
