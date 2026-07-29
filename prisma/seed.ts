@@ -217,42 +217,61 @@ async function main(): Promise<void> {
     const code = movementCode(year, sequence);
     const sign = type === MovementType.OUTBOUND ? -1 : 1;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.movement.create({
-        data: {
-          organizationId: organization.id,
-          code,
-          type,
-          status: MovementStatus.CONFIRMED,
-          locationId: location.id,
-          occurredAt,
-          note,
-          createdByUserId: admin.id,
-          confirmedAt: occurredAt,
-          items: {
-            create: lines.map((line) => ({
-              productId: line.productId,
-              quantity: line.quantity,
-              unit: line.unit,
-              quantityBase:
-                line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity,
-              productNameSnapshot: line.name,
-              brandNameSnapshot: line.brandName,
-            })),
-          },
-        },
-      });
+    // Las líneas se agrupan por delta para no hacer una ida y vuelta por cada una:
+    // el movimiento de apertura tiene 215 líneas y, contra una base remota, 215
+    // updates secuenciales agotan el timeout de la transacción. Agrupados son
+    // tantas consultas como valores distintos de delta haya, que son un puñado.
+    const productIdsByDelta = new Map<number, string[]>();
 
-      for (const line of lines) {
-        const delta =
-          sign * (line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity);
+    for (const line of lines) {
+      const delta =
+        sign * (line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity);
+      const bucket = productIdsByDelta.get(delta);
 
-        await tx.stockLevel.update({
-          where: { productId_locationId: { productId: line.productId, locationId: location.id } },
-          data: { quantityBase: { increment: delta } },
-        });
+      if (bucket) {
+        bucket.push(line.productId);
+      } else {
+        productIdsByDelta.set(delta, [line.productId]);
       }
-    });
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.movement.create({
+          data: {
+            organizationId: organization.id,
+            code,
+            type,
+            status: MovementStatus.CONFIRMED,
+            locationId: location.id,
+            occurredAt,
+            note,
+            createdByUserId: admin.id,
+            confirmedAt: occurredAt,
+            items: {
+              create: lines.map((line) => ({
+                productId: line.productId,
+                quantity: line.quantity,
+                unit: line.unit,
+                quantityBase:
+                  line.unit === MovementUnit.CASE ? line.quantity * line.caseSize : line.quantity,
+                productNameSnapshot: line.name,
+                brandNameSnapshot: line.brandName,
+              })),
+            },
+          },
+        });
+
+        for (const [delta, ids] of productIdsByDelta) {
+          await tx.stockLevel.updateMany({
+            where: { productId: { in: ids }, locationId: location.id },
+            data: { quantityBase: { increment: delta } },
+          });
+        }
+      },
+      // Margen holgado sobre la latencia de red; el trabajo real es de milisegundos.
+      { timeout: 30_000, maxWait: 15_000 },
+    );
   }
 
   // 1. Movimiento de apertura: entra todo el catálogo con cantidades simuladas.
