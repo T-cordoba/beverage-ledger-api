@@ -107,7 +107,7 @@ Verificado contra Supabase, no solo compilado: ciclo completo de movimiento con 
 | `GET` | `/movements/:id/pdf` | `movement:read` |
 | `GET` | `/locations` · `/locations/:id` | autenticado |
 | `POST` `PATCH` `DELETE` | `/locations` (+ `/:id`) | `catalog:manage` |
-| `GET` | `/stock` · `/stock/low` · `/stock/:productId/kardex` | `stock:read` |
+| `GET` | `/stock` (+ `?productIds=`) · `/stock/low` · `/stock/:productId/kardex` | `stock:read` |
 | `GET` | `/reports/summary` · `/consumption` · `/activity` | `report:read` |
 | `GET` `PATCH` | `/organization` | `organization:manage` |
 | `GET` | `/audit-logs` | `audit:read` |
@@ -118,6 +118,7 @@ Decisiones que quedaron tomadas al construirlo:
 - **`movements.code` sale de `movement_counters`**, una fila por organización y año, incrementada dentro de la transacción que crea el movimiento. Una secuencia de Postgres no servía: no se puede declarar una por tenant y deja huecos al hacer rollback. La primera extracción de cada año **se auto-inicializa desde el código más alto que ya exista** en el ledger, porque el seed numera por su cuenta y empezar en 1 chocaría.
 - **El código se asigna al crear, y un movimiento nunca se borra.** Un borrador se anula, no se elimina, así que la serie no tiene huecos y se ve que el MOV-000042 se empezó y se abandonó.
 - **La auditoría se escribe explícita desde cada caso de uso**, no con un interceptor. Un interceptor solo ve la forma HTTP: no sabe nombrar la entidad ni qué cambió, y la entrada de una confirmación tiene que confirmarse o revertirse *con* el movimiento. `AuditService.record()` es best-effort (no tumba un login), `recordIn(tx, …)` entra en la transacción del que llama y sí propaga el fallo.
+- **`/stock` acepta `productIds` separados por comas**, con tope de 200. Una query string no tiene arrays, y el cliente generado no repite la clave. Existe porque la pantalla de captura necesita saber cuánto puede sacar de los productos que ya tiene a la vista, y paginar el catálogo entero para encontrar esas filas es la forma equivocada de esa pregunta. El front lo pide en tandas de 50.
 - **El stock nunca queda negativo, tampoco por ajuste.** Un conteo físico no da negativo, así que un ajuste que deje el nivel bajo cero es un error de captura. La guarda viaja **dentro** del `UPDATE` (`quantity_base >= -delta`); una lectura previa aparte solo existe para poder decir qué producto falta y cuánto.
 - **Los deltas se agrupan por valor**, no por línea: el movimiento de apertura tiene 215 líneas y una sentencia por línea revienta el timeout de transacción contra una base remota.
 - **Una salida o entrada con cantidad negativa se rechaza.** Sin eso, una salida negativa es una entrada registrada por quien nunca recibió ese permiso: se cae la segregación de funciones.
@@ -132,8 +133,7 @@ Decisiones que quedaron tomadas al construirlo:
 - **La estructura del documento PDF queda pendiente de revisión.** El layout actual es una migración del que había en el front, con las columnas reducidas a lo que el ledger realmente guarda: nombre y marca del snapshot, cantidad, unidad y unidades base. El resto de los campos del original (origen, ABV, añejamiento, subcategoría) vivían en el blob JSON denormalizado y ahora están en `products`, no en la línea del movimiento — meterlos en el documento significa decidir si se leen del producto actual (y entonces un reimpreso viejo deja de ser fiel) o si el snapshot debe crecer. **Es una decisión de producto, no de código, y se aborda en una fase posterior** junto con la revisión visual del layout.
 - **El PDF usa las fuentes estándar**, que son WinAnsi: 218 caracteres, Windows-1252. Cubre los acentos del español, la raya y las comillas curvas, y `drawText` **lanza excepción** con cualquier cosa fuera de ese juego. `movement-pdf.service.ts` le pregunta a la fuente qué soporta y solo pliega lo que de verdad no cabe (a su letra base, o a `?` como último recurso). El arreglo definitivo es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
 - **Sin infraestructura de tests**, por decisión del usuario: es el trabajo de V&V del semestre. Los guiones que verificaron esta fase fueron de un solo uso y no están versionados.
-- **El backfill de `movement_items.location_id` no se ha ejercido con datos reales.** La migración se validó replayándola sobre la base de sombra y corriendo el ciclo completo contra una base local sembrada, pero las 400 líneas que ya existen en Supabase se rellenan la primera vez que Render corra `migrate deploy`. Es un `UPDATE ... FROM movements`, sin ambigüedad posible, pero conviene mirar el log de ese despliegue.
-- **El front todavía no consume nada de esto.** Bodegas y traspasos existen en la API y no tienen vista; además el contrato cambió en tres sitios que rompen el front actual: el filtro `isActive` del catálogo pasó a `status`, `password` es obligatoria al crear usuario, y `MovementItemDto` trae `locationId`.
+- **Las pantallas nuevas del front no las ha recorrido nadie.** El backend se ejerció de punta a punta contra una base real —ciclo de traspaso, anulación, matriz de reglas e invariante en cero descuadres— y el backfill se verificó sobre los datos de Supabase, pero el CRUD de bodegas, la captura de traspaso y el tope del picker solo tienen typecheck, lint y build.
 
 ---
 
