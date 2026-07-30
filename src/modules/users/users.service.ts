@@ -99,9 +99,8 @@ export class UsersService {
       email: dto.email,
       name: dto.name,
       role: dto.role,
-      // Without a password there is no way in yet, which is what INVITED means.
-      status: dto.password ? UserStatus.ACTIVE : UserStatus.INVITED,
-      passwordHash: dto.password ? await this.passwords.hash(dto.password) : null,
+      status: UserStatus.ACTIVE,
+      passwordHash: await this.passwords.hash(dto.password),
     });
 
     await this.audit.record({
