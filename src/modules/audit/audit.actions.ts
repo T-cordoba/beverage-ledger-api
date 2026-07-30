@@ -24,6 +24,10 @@ export const AuditAction = {
   ProductUpdated: 'product.updated',
   ProductDeactivated: 'product.deactivated',
 
+  LocationCreated: 'location.created',
+  LocationUpdated: 'location.updated',
+  LocationDeleted: 'location.deleted',
+
   MovementCreated: 'movement.created',
   MovementUpdated: 'movement.updated',
   MovementConfirmed: 'movement.confirmed',
@@ -38,6 +42,7 @@ export const AuditEntity = {
   Category: 'category',
   Brand: 'brand',
   Product: 'product',
+  Location: 'location',
   Movement: 'movement',
 } as const;
 

@@ -31,11 +31,13 @@ enum AuthProvider {
 }
 
 /// INBOUND adds stock, OUTBOUND subtracts, ADJUSTMENT corrects in either
-/// direction and requires a reason.
+/// direction and requires a reason. TRANSFER moves stock between locations and
+/// nets to zero: it writes one line per side, so no total changes.
 enum MovementType {
   INBOUND
   OUTBOUND
   ADJUSTMENT
+  TRANSFER
 }
 
 enum MovementStatus {
@@ -76,22 +78,22 @@ model Organization {
 }
 
 model User {
-  id              String     @id @default(uuid()) @db.Uuid
-  organizationId  String     @map("organization_id") @db.Uuid
-  email           String
-  name            String
-  avatarUrl       String?    @map("avatar_url")
+  id                  String     @id @default(uuid()) @db.Uuid
+  organizationId      String     @map("organization_id") @db.Uuid
+  email               String
+  name                String
+  avatarUrl           String?    @map("avatar_url")
   /// Null for users who only sign in with Google.
-  passwordHash    String?    @map("password_hash")
-  role            UserRole   @default(OPERATOR)
-  status          UserStatus @default(ACTIVE)
-  emailVerifiedAt DateTime?  @map("email_verified_at")
-  lastLoginAt     DateTime?  @map("last_login_at")
+  passwordHash        String?    @map("password_hash")
+  role                UserRole   @default(OPERATOR)
+  status              UserStatus @default(ACTIVE)
+  emailVerifiedAt     DateTime?  @map("email_verified_at")
+  lastLoginAt         DateTime?  @map("last_login_at")
   /// Reset on every successful sign-in. Feeds the lockout window below.
-  failedLoginAttempts Int    @default(0) @map("failed_login_attempts")
-  lockedUntil     DateTime?  @map("locked_until")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  failedLoginAttempts Int        @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?  @map("locked_until")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
   organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   identities       AuthIdentity[]
@@ -210,8 +212,7 @@ model Product {
   @@map("products")
 }
 
-/// Where stock lives. Seeded with a single row, which leaves multi-warehouse
-/// modelled without building the interface for it yet.
+/// Where stock lives. Seeded with a single default row.
 model Location {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
@@ -220,9 +221,11 @@ model Location {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  movements    Movement[]
-  stockLevels  StockLevel[]
+  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  movements         Movement[]     @relation("MovementLocation")
+  incomingTransfers Movement[]     @relation("MovementDestination")
+  movementItems     MovementItem[]
+  stockLevels       StockLevel[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -230,28 +233,33 @@ model Location {
 }
 
 model Movement {
-  id              String         @id @default(uuid()) @db.Uuid
-  organizationId  String         @map("organization_id") @db.Uuid
+  id                    String         @id @default(uuid()) @db.Uuid
+  organizationId        String         @map("organization_id") @db.Uuid
   /// Human-readable code: MOV-2026-000123.
-  code            String
-  type            MovementType
-  status          MovementStatus @default(DRAFT)
-  locationId      String         @map("location_id") @db.Uuid
+  code                  String
+  type                  MovementType
+  status                MovementStatus @default(DRAFT)
+  /// The location a movement acts on, and the origin of a TRANSFER.
+  locationId            String         @map("location_id") @db.Uuid
+  /// Only a TRANSFER has one. Derivable from the lines, but keeping it on the
+  /// header lets a draft carry its destination before any line exists.
+  destinationLocationId String?        @map("destination_location_id") @db.Uuid
   /// When the movement happened, which need not be when it was recorded.
-  occurredAt      DateTime       @map("occurred_at")
+  occurredAt            DateTime       @map("occurred_at")
   /// Required at service level when type is ADJUSTMENT.
-  reason          String?
-  note            String?
-  createdByUserId String         @map("created_by_user_id") @db.Uuid
-  confirmedAt     DateTime?      @map("confirmed_at")
-  cancelledAt     DateTime?      @map("cancelled_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  reason                String?
+  note                  String?
+  createdByUserId       String         @map("created_by_user_id") @db.Uuid
+  confirmedAt           DateTime?      @map("confirmed_at")
+  cancelledAt           DateTime?      @map("cancelled_at")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  location     Location       @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  createdBy    User           @relation("MovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  items        MovementItem[]
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location            Location       @relation("MovementLocation", fields: [locationId], references: [id], onDelete: Restrict)
+  destinationLocation Location?      @relation("MovementDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  createdBy           User           @relation("MovementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items               MovementItem[]
 
   @@unique([organizationId, code])
   @@index([organizationId, occurredAt(sort: Desc)])
@@ -283,10 +291,13 @@ model MovementItem {
   id           String       @id @default(uuid()) @db.Uuid
   movementId   String       @map("movement_id") @db.Uuid
   productId    String       @map("product_id") @db.Uuid
+  /// Which location this line moves, so a TRANSFER can write both of its halves
+  /// as ordinary signed lines. Summing quantity_base per product and location
+  /// over confirmed movements is the stock on hand, with nothing to interpret.
+  locationId   String       @map("location_id") @db.Uuid
   quantity     Int
   unit         MovementUnit
   /// quantity normalized to singles, and signed: negative takes stock away.
-  /// Summing this column over confirmed movements is the stock on hand.
   quantityBase Int          @map("quantity_base")
 
   productNameSnapshot String  @map("product_name_snapshot")
@@ -296,9 +307,10 @@ model MovementItem {
 
   movement Movement @relation(fields: [movementId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
   @@index([movementId])
-  @@index([productId])
+  @@index([productId, locationId])
   @@map("movement_items")
 }
 

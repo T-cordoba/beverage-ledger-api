@@ -29,6 +29,12 @@ export class MovementItemDto {
   @ApiProperty({ format: 'uuid' })
   productId!: string;
 
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Which location this line moves. A transfer writes one line per side',
+  })
+  locationId!: string;
+
   @ApiProperty({ description: 'As captured, in the unit below' })
   quantity!: number;
 
@@ -66,8 +72,16 @@ export class MovementDto {
   @ApiProperty({ enum: MovementStatus, enumName: 'MovementStatus' })
   status!: MovementStatus;
 
-  @ApiProperty({ format: 'uuid' })
+  @ApiProperty({ format: 'uuid', description: 'The origin on a transfer' })
   locationId!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Only a transfer has one',
+  })
+  destinationLocationId!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time', description: 'When it happened' })
   occurredAt!: Date;
@@ -136,7 +150,7 @@ export class MovementLineInputDto {
 
   @ApiProperty({
     description:
-      'Positive on inbound and outbound, where the type carries the direction. Signed on an adjustment, which corrects either way',
+      'Positive on inbound, outbound and transfer, where the type carries the direction. Signed on an adjustment, which corrects either way',
     example: 6,
   })
   @Type(() => Number)
@@ -155,10 +169,21 @@ export class CreateMovementDto {
   @IsEnum(MovementType)
   type!: MovementType;
 
-  @ApiPropertyOptional({ format: 'uuid', description: 'Defaults to the default location' })
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Defaults to the default location. The origin on a transfer',
+  })
   @IsOptional()
   @IsUUID()
   locationId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Required on a transfer, and rejected on every other type',
+  })
+  @IsOptional()
+  @IsUUID()
+  destinationLocationId?: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -257,6 +282,14 @@ export class ListMovementsDto extends CursorPaginationDto {
   @IsOptional()
   @IsUUID()
   createdByUserId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Movements touching this location, on either side of a transfer',
+  })
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   @IsOptional()

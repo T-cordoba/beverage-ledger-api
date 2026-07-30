@@ -31,6 +31,8 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 
 **Con la Fase 3 el backend está completo.** Lo que sigue ocurre entero en el repo del front (Fases 4 a 8); aquí no hay trabajo pendiente salvo lo listado en "Deuda consciente" más abajo.
 
+**Desplegado y funcionando** en Render: `https://beverage-ledger-api.onrender.com`. Ver §4.
+
 Plan completo en el repo del front: `C:\Users\Tomas\.claude\plans\ok-voy-a-hacerle-tender-sprout.md`
 
 ### Dónde quedó la Fase 1
@@ -39,21 +41,26 @@ Todo verificado, no solo compilado. Migraciones aplicadas y seed ejecutado **con
 
 La invariante del ledger se comprueba con esta consulta, que debe devolver `descuadres = 0` y `total_ledger = total_proyeccion`. Desde la Fase 3 `quantity_base` va **con signo**, así que es una suma directa y ya no hace falta reconstruir la dirección con un `CASE`:
 
+Desde que existen los traspasos la línea lleva su propia bodega, así que se agrupa por producto **y** bodega, que es la clave de `stock_levels`:
+
 ```sql
 WITH ledger AS (
-  SELECT mi.product_id, SUM(mi.quantity_base) AS from_ledger
+  SELECT mi.product_id, mi.location_id, SUM(mi.quantity_base) AS from_ledger
   FROM movement_items mi
   JOIN movements m ON m.id = mi.movement_id
   WHERE m.status = 'CONFIRMED'
-  GROUP BY mi.product_id
+  GROUP BY mi.product_id, mi.location_id
 )
 SELECT
-  (SELECT COUNT(*) FROM ledger l JOIN stock_levels s ON s.product_id = l.product_id
+  (SELECT COUNT(*) FROM ledger l JOIN stock_levels s
+     ON s.product_id = l.product_id AND s.location_id = l.location_id
      WHERE s.quantity_base <> l.from_ledger) AS descuadres,
   (SELECT SUM(from_ledger) FROM ledger) AS total_ledger,
   (SELECT SUM(quantity_base) FROM stock_levels) AS total_proyeccion,
   (SELECT COUNT(*) FROM stock_levels WHERE quantity_base < 0) AS niveles_negativos;
 ```
+
+Un traspaso **no mueve `total_ledger`**: escribe `-N` en origen y `+N` en destino, y la suma global queda igual. Si un traspaso cambia ese total, hay una mitad sin escribir.
 
 ### Dónde quedó la Fase 2
 
@@ -98,6 +105,8 @@ Verificado contra Supabase, no solo compilado: ciclo completo de movimiento con 
 | `POST` | `/movements/:id/confirm` | según el **tipo** del movimiento |
 | `POST` | `/movements/:id/cancel` | `movement:cancel` |
 | `GET` | `/movements/:id/pdf` | `movement:read` |
+| `GET` | `/locations` · `/locations/:id` | autenticado |
+| `POST` `PATCH` `DELETE` | `/locations` (+ `/:id`) | `catalog:manage` |
 | `GET` | `/stock` · `/stock/low` · `/stock/:productId/kardex` | `stock:read` |
 | `GET` | `/reports/summary` · `/consumption` · `/activity` | `report:read` |
 | `GET` `PATCH` | `/organization` | `organization:manage` |
@@ -113,7 +122,8 @@ Decisiones que quedaron tomadas al construirlo:
 - **Los deltas se agrupan por valor**, no por línea: el movimiento de apertura tiene 215 líneas y una sentencia por línea revienta el timeout de transacción contra una base remota.
 - **Una salida o entrada con cantidad negativa se rechaza.** Sin eso, una salida negativa es una entrada registrada por quien nunca recibió ese permiso: se cae la segregación de funciones.
 - **Crear y confirmar no llevan decorador de permiso**, porque cuál aplica depende del tipo guardado en el registro y ningún decorador estático lo ve. El mapa tipo→permiso vive en `permissions.config.ts`, junto a la matriz, y lo lee el service. **No es una excepción a "autorizar en el guard": es la misma definición declarativa, consultada donde sí se conoce el dato.**
-- **Los productos no se borran**, se desactivan: el ledger los referencia. Categorías y marcas sí se borran, pero solo si ningún producto las usa.
+- **Un traspaso se escribe como dos líneas ordinarias**, `-N` en origen y `+N` en destino, y por eso `movement_items` lleva **su propia bodega** en vez de heredar la de la cabecera. Es la misma razón por la que `quantity_base` lleva signo: sumar sigue siendo la existencia, sin mirar el tipo. Poner solo un `destination_location_id` en la cabecera habría devuelto el `CASE` que la Fase 3 eliminó. El PDF imprime una fila por producto, no dos, y los reportes no cambiaron porque todos filtran ya por `m.type`.
+- **Los productos no se borran**, se desactivan: el ledger los referencia. Categorías y marcas sí se borran, pero solo si ningún producto las usa. Una **bodega** tampoco se borra si el ledger la referencia, y la default se reemplaza promoviendo otra, nunca vaciándola: si no queda ninguna, un movimiento sin bodega no tiene dónde caer.
 - **Un rango de reporte omitido son los últimos 30 días**, para que una llamada sin filtros no sea un scan completo. `activity` agrupa en la zona horaria de la organización, no la del servidor.
 
 ### Deuda consciente que queda en este repo
@@ -122,6 +132,8 @@ Decisiones que quedaron tomadas al construirlo:
 - **La estructura del documento PDF queda pendiente de revisión.** El layout actual es una migración del que había en el front, con las columnas reducidas a lo que el ledger realmente guarda: nombre y marca del snapshot, cantidad, unidad y unidades base. El resto de los campos del original (origen, ABV, añejamiento, subcategoría) vivían en el blob JSON denormalizado y ahora están en `products`, no en la línea del movimiento — meterlos en el documento significa decidir si se leen del producto actual (y entonces un reimpreso viejo deja de ser fiel) o si el snapshot debe crecer. **Es una decisión de producto, no de código, y se aborda en una fase posterior** junto con la revisión visual del layout.
 - **El PDF usa las fuentes estándar**, que son WinAnsi: 218 caracteres, Windows-1252. Cubre los acentos del español, la raya y las comillas curvas, y `drawText` **lanza excepción** con cualquier cosa fuera de ese juego. `movement-pdf.service.ts` le pregunta a la fuente qué soporta y solo pliega lo que de verdad no cabe (a su letra base, o a `?` como último recurso). El arreglo definitivo es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
 - **Sin infraestructura de tests**, por decisión del usuario: es el trabajo de V&V del semestre. Los guiones que verificaron esta fase fueron de un solo uso y no están versionados.
+- **El backfill de `movement_items.location_id` no se ha ejercido con datos reales.** La migración se validó replayándola sobre la base de sombra y corriendo el ciclo completo contra una base local sembrada, pero las 400 líneas que ya existen en Supabase se rellenan la primera vez que Render corra `migrate deploy`. Es un `UPDATE ... FROM movements`, sin ambigüedad posible, pero conviene mirar el log de ese despliegue.
+- **El front todavía no consume nada de esto.** Bodegas y traspasos existen en la API y no tienen vista; además el contrato cambió en tres sitios que rompen el front actual: el filtro `isActive` del catálogo pasó a `status`, `password` es obligatoria al crear usuario, y `MovementItemDto` trae `locationId`.
 
 ---
 
@@ -180,13 +192,29 @@ Hay **dos conexiones al mismo Postgres** y no son intercambiables:
 
 El pooler en modo transacción **no puede ejecutar migraciones**. El reparto está hecho en `prisma.config.ts` (migraciones → `DIRECT_URL`) y en `src/infra/prisma/prisma.service.ts` (runtime → `DATABASE_URL`).
 
-`SHADOW_DATABASE_URL` apunta al Postgres de docker-compose: `migrate dev` necesita crear y destruir una base para detectar drift, y el rol de aplicación de Supabase no puede. Solo hace falta en desarrollo — `migrate deploy` no usa base de sombra.
+`SHADOW_DATABASE_URL` apunta al Postgres de docker-compose: `migrate dev` necesita crear y destruir una base para detectar drift, y el rol de aplicación de Supabase no puede. Solo hace falta en desarrollo — `migrate deploy` no usa base de sombra, y por eso `prisma.config.ts` la lee con `process.env` y no con el helper `env()` de Prisma, que **lanza** cuando la variable falta y rompería el build de despliegue.
 
 Si una contraseña contiene `/ % @ :` hay que **URL-encodearla** o la conexión falla con un error de parseo poco descriptivo.
 
 `JWT_SECRET` es obligatoria y de 32 caracteres mínimo; genérala con `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Las de Google son opcionales pero se validan **como conjunto**: las tres o ninguna, para que una configuración a medias falle al arrancar y no en mitad del callback.
 
 **Ningún módulo lee `process.env` directamente.** Todo pasa por `src/config/configuration.ts`, que valida el entorno con Zod al arrancar y llega tipado vía `ConfigService<AppConfig, true>`. Si falta o está mal una variable, el proceso no arranca — a diferencia del proyecto original, que fallaba en la primera consulta con un error indescifrable.
+
+### Despliegue
+
+La API vive en **Render** (`https://beverage-ledger-api.onrender.com`) y el front en **Vercel**, descritos en `render.yaml`. Los secretos van marcados `sync: false`: Render los pide una vez en el panel y nunca tocan el repositorio.
+
+Las migraciones corren en el `buildCommand`, no al arrancar: `migrate deploy` es idempotente y un fallo debe abortar el despliegue en vez de dejar una instancia en bucle de reinicio. El *pre-deploy hook* de Render, que es donde corresponderían, es de pago.
+
+Detalles que costaron un despliegue fallido cada uno:
+
+- **`PORT` la inyecta Render.** Declararla en el blueprint pisaría el binding.
+- **`FRONTEND_URL` es `z.url()`**, así que sin `https://` no arranca. Dejar el campo en blanco en el panel produce cadena vacía, que es la misma trampa del `.env` de §8.
+- **`CORS_ORIGINS` no valida nada** (`z.string()`), así que un valor roto no falla al arrancar: falla en el navegador. Es lista separada por comas e incluye `http://localhost:3000` a propósito, para poder correr el front local contra la API desplegada — el camino cuando la red de turno bloquea el puerto de Supabase.
+- **`NODE_ENV=production` cambia la cookie de refresh** a `Secure; SameSite=None`. Ver la trampa de Safari en §8.
+- **El plan free duerme a los 15 minutos** y despertar cuesta ~50s. Un cron externo cada 10 minutos contra `/api/v1/health` lo evita y de paso impide que Supabase se pause por inactividad, pero 24/7 consume ~730 de las 750 horas mensuales del plan: entra un servicio free, no dos.
+
+`SEED_ADMIN_PASSWORD` **no** está en Render: la lee el seed, no la API. La credencial del admin vive como hash argon2 en `users.password_hash`.
 
 ---
 
@@ -253,7 +281,7 @@ Lo que todavía NO existe y llega cuando el SaaS sea concreto: alta de organizac
 - `organizations` — el tenant. De aquí sale **todo** el branding: nombre, logo y textos del PDF. Nunca de constantes.
 - `users` · `auth_identities` · `refresh_tokens` — identidad. `passwordHash` es nulo para usuarios solo-Google; `auth_identities` permite tener password y Google a la vez en vez de dos cuentas para el mismo email.
 - `categories` · `brands` · `products` · `locations` — catálogo. `caseSize` define cuántas unidades sueltas trae una caja.
-- `movements` · `movement_items` — el ledger. Los items guardan `quantityBase` (normalizado con `caseSize` y **con signo**: negativo resta) y un **snapshot** del nombre y la marca, para que un PDF emitido hace un año siga siendo fiel aunque el producto se renombre.
+- `movements` · `movement_items` — el ledger. Los items guardan `quantityBase` (normalizado con `caseSize` y **con signo**: negativo resta), **su propia bodega** y un **snapshot** del nombre y la marca, para que un PDF emitido hace un año siga siendo fiel aunque el producto se renombre. Un `TRANSFER` escribe dos líneas por producto; la cabecera guarda origen en `locationId` y destino en `destinationLocationId`.
 - `movement_counters` — de dónde sale `movements.code`, una fila por organización y año. Ver §2.
 - `stock_levels` — proyección de las existencias. Se actualiza **en la misma transacción** que confirma o anula un movimiento. Se lee en O(1) y siempre es reconstruible desde el ledger.
 - `audit_logs` — quién hizo qué, cuándo y desde dónde.
@@ -269,6 +297,7 @@ Sigue el principio de **segregación de funciones**: quien mueve la mercancía n
 | Registrar salida (`OUTBOUND`) | ✅ | ✅ | ✅ |
 | Registrar entrada (`INBOUND`) | ❌ | ✅ | ✅ |
 | Registrar ajuste (`ADJUSTMENT`) | ❌ | ✅ *(motivo obligatorio)* | ✅ |
+| Registrar traspaso (`TRANSFER`) | ❌ | ✅ | ✅ |
 | Anular un movimiento confirmado | ❌ | ✅ | ✅ |
 | Ver historial y existencias | ✅ | ✅ | ✅ |
 | Ver reportes | ❌ | ✅ | ✅ |
@@ -356,14 +385,16 @@ Un commit reúne un cambio con una sola intención, con un máximo orientativo d
 - **`@Matches` repetido en un mismo campo se pisa.** `class-validator` indexa los errores por nombre de constraint, así que tres `@Matches` reportan uno solo. La política de contraseña usa una única expresión con lookaheads.
 - **Cookie cross-site.** El despliegue previsto es Vercel (front) + Render (API) sin dominio propio, así que la cookie de refresh queda cross-site y obligada a `SameSite=None; Secure`, que Safari bloquea por ITP. Funciona en local y en Chrome/Edge/Firefox; el arreglo real es un dominio propio con `app.` y `api.` bajo el mismo padre.
 - **`prisma init` instala packs de documentación** en `.agents/`, `.claude/` y `.windsurf/`. Son material de referencia local y están gitignoreados; útiles porque Prisma 7 es muy reciente.
-- **`migrate dev` necesita Docker levantado** para la base de sombra. Sin él, la alternativa es generar el SQL comparando contra la base viva y aplicarlo con `deploy`:
+- **`migrate dev` necesita Docker levantado** para la base de sombra. Sin acceso a la base remota, el SQL se genera **replayando las migraciones** sobre la base de sombra local, que no toca Supabase para nada:
 
   ```bash
-  npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script
-  npx prisma migrate deploy
+  pnpm exec prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script
+  pnpm exec prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code
   ```
 
-  Los flags cambiaron en Prisma 7: `--from-schema-datasource` ya no existe.
+  La segunda forma es la verificación: con la migración ya escrita debe decir *No difference detected*, o sea que el archivo reproduce el esquema exacto. Los flags cambiaron en Prisma 7 — `--to-schema-datamodel` y `--shadow-database-url` ya no existen; la base de sombra sale de `prisma.config.ts`.
+- **Una columna NOT NULL nueva sobre una tabla con datos no la genera bien `migrate diff`**: emite el `ADD COLUMN ... NOT NULL` de golpe, que revienta. El patrón es añadirla nullable, hacer el backfill y recién ahí `SET NOT NULL`, editando el SQL generado a mano. Así se añadió `movement_items.location_id`.
+- **Correr la API contra el Postgres local sin tocar el `.env`**: exportar `DATABASE_URL` y `DIRECT_URL` en la shell y arrancar. `dotenv` no pisa variables que ya existen en el entorno, así que gana la de la shell.
 - **`SUM()` y `COUNT()` en Postgres devuelven `bigint`**, que no sobrevive a `JSON.stringify`. Toda agregación cruda lleva `::int` en la consulta, o `Number()` al salir del repositorio.
 - **`CREATE EXTENSION` no se declara en el esquema.** Exige el preview feature `postgresqlExtensions`, y fijarle esquema (Supabase guarda las extensiones en `extensions`) rompería el Postgres local, que no tiene ese esquema. `pg_trgm` se crea sin calificar dentro de la migración.
 

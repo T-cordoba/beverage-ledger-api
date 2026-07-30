@@ -15,7 +15,15 @@ import type {
   ProductPageDto,
   UpdateProductDto,
 } from './dto/product.dto';
+import { ProductStatusFilter } from './dto/product.dto';
 import { ProductsRepository, type MovementTarget } from './repositories/products.repository';
+
+/** Undefined is what the repository reads as "do not filter on it at all". */
+const ACTIVE_BY_STATUS: Readonly<Record<ProductStatusFilter, boolean | undefined>> = {
+  [ProductStatusFilter.Active]: true,
+  [ProductStatusFilter.Inactive]: false,
+  [ProductStatusFilter.All]: undefined,
+};
 
 @Injectable()
 export class ProductsService {
@@ -33,7 +41,7 @@ export class ProductsService {
       subcategory: query.subcategory,
       age: query.age,
       abv: query.abv,
-      isActive: query.isActive,
+      isActive: ACTIVE_BY_STATUS[query.status],
       sort: query.sort,
     });
 
@@ -142,7 +150,7 @@ export class ProductsService {
   }
 
   /** @throws {BadRequestException} rather than letting a foreign key answer for us. */
-  private async assertReferencesExist(categoryId?: string, brandId?: string): Promise<void> {
+  private async assertReferencesExist(categoryId?: string, brandId?: string | null): Promise<void> {
     if (categoryId && !(await this.products.categoryExists(categoryId))) {
       throw new BadRequestException('That category does not exist');
     }

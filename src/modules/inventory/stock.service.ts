@@ -28,6 +28,7 @@ export class StockService {
     const rows = await this.stock.findPage(query.limit, query.cursor, locationId, {
       search: query.search,
       categoryId: query.categoryId,
+      productIds: query.productIds,
     });
 
     return toPage(rows, query.limit, (row) => row.productId);

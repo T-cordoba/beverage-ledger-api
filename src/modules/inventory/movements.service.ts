@@ -56,6 +56,7 @@ export class MovementsService {
       status: query.status,
       productId: query.productId,
       createdByUserId: query.createdByUserId,
+      locationId: query.locationId,
       from: query.from,
       to: query.to,
     });
@@ -87,7 +88,8 @@ export class MovementsService {
 
     const occurredAt = this.resolveOccurredAt(dto.occurredAt);
     const locationId = await this.locations.resolve(dto.locationId);
-    const items = await this.toLines(dto.type, dto.items);
+    const destinationLocationId = await this.resolveDestination(dto.type, locationId, dto);
+    const items = await this.toLines(dto.type, locationId, destinationLocationId, dto.items);
 
     const id = await this.movements.runInTransaction(async (tx) => {
       const sequence = await this.movements.nextSequence(occurredAt.getFullYear(), tx);
@@ -97,6 +99,7 @@ export class MovementsService {
           code: movementCode(occurredAt.getFullYear(), sequence),
           type: dto.type,
           locationId,
+          destinationLocationId,
           occurredAt,
           reason: dto.reason ?? null,
           note: dto.note ?? null,
@@ -130,7 +133,14 @@ export class MovementsService {
       this.assertReason(movement.type, dto.reason);
     }
 
-    const items = dto.items ? await this.toLines(movement.type, dto.items) : undefined;
+    const items = dto.items
+      ? await this.toLines(
+          movement.type,
+          movement.locationId,
+          movement.destinationLocationId,
+          dto.items,
+        )
+      : undefined;
     const occurredAt = dto.occurredAt ? this.resolveOccurredAt(dto.occurredAt) : undefined;
 
     await this.movements.runInTransaction(async (tx) => {
@@ -172,7 +182,7 @@ export class MovementsService {
     this.assertDraft(movement.status);
 
     const deltas = this.groupByDelta(movement.items, 1);
-    await this.assertStockSurvives(deltas, movement.locationId);
+    await this.assertStockSurvives(deltas);
 
     await this.movements.runInTransaction(async (tx) => {
       const claimed = await this.movements.transition(
@@ -187,7 +197,7 @@ export class MovementsService {
         throw new ConflictException('The movement was already confirmed');
       }
 
-      await this.applyDeltas(deltas, movement.locationId, tx);
+      await this.applyDeltas(deltas, tx);
 
       await this.audit.recordIn(tx, {
         action: AuditAction.MovementConfirmed,
@@ -219,10 +229,10 @@ export class MovementsService {
     const wasConfirmed = movement.status === MovementStatus.CONFIRMED;
     const deltas = wasConfirmed
       ? this.groupByDelta(movement.items, -1)
-      : new Map<number, string[]>();
+      : new Map<string, Map<number, string[]>>();
 
     if (wasConfirmed) {
-      await this.assertStockSurvives(deltas, movement.locationId);
+      await this.assertStockSurvives(deltas);
     }
 
     await this.movements.runInTransaction(async (tx) => {
@@ -239,7 +249,7 @@ export class MovementsService {
       }
 
       if (wasConfirmed) {
-        await this.applyDeltas(deltas, movement.locationId, tx);
+        await this.applyDeltas(deltas, tx);
       }
 
       await this.audit.recordIn(tx, {
@@ -261,11 +271,13 @@ export class MovementsService {
    */
   private async toLines(
     type: MovementType,
+    locationId: string,
+    destinationLocationId: string | null,
     lines: MovementLineInputDto[],
   ): Promise<MovementLineRow[]> {
     const targets = await this.products.resolveMovementTargets(lines.map((line) => line.productId));
 
-    return lines.map((line) => {
+    return lines.flatMap((line) => {
       const target = targets.get(line.productId);
 
       if (!target) {
@@ -277,50 +289,87 @@ export class MovementsService {
       const magnitude =
         line.unit === MovementUnit.CASE ? line.quantity * target.caseSize : line.quantity;
 
-      return {
+      const common = {
         productId: line.productId,
         quantity: line.quantity,
         unit: line.unit,
-        // Only an outbound flips the sign. An adjustment carries its own, which
-        // is what lets it correct in either direction.
-        quantityBase: type === MovementType.OUTBOUND ? -magnitude : magnitude,
         productNameSnapshot: target.name,
         brandNameSnapshot: target.brandName,
       };
+
+      // A transfer is written as its two halves, each an ordinary signed line, so
+      // the ledger stays readable by summing rather than by knowing the type.
+      if (type === MovementType.TRANSFER) {
+        if (!destinationLocationId) {
+          throw new BadRequestException('A transfer needs a destination location');
+        }
+
+        return [
+          { ...common, locationId, quantityBase: -magnitude },
+          { ...common, locationId: destinationLocationId, quantityBase: magnitude },
+        ];
+      }
+
+      return [
+        {
+          ...common,
+          locationId,
+          // Only an outbound flips the sign. An adjustment carries its own, which
+          // is what lets it correct in either direction.
+          quantityBase: type === MovementType.OUTBOUND ? -magnitude : magnitude,
+        },
+      ];
     });
   }
 
-  /** Grouped by delta, so a 215-line movement is a handful of statements, not 215. */
+  /**
+   * Grouped by location and then by delta, so a 215-line movement is a handful of
+   * statements and not 215.
+   *
+   * Keyed by location because a transfer touches two, and stock_levels is one row
+   * per product and location.
+   */
   private groupByDelta(
-    items: { productId: string; quantityBase: number }[],
+    items: { productId: string; locationId: string; quantityBase: number }[],
     factor: 1 | -1,
-  ): Map<number, string[]> {
-    const totalByProduct = new Map<string, number>();
+  ): Map<string, Map<number, string[]>> {
+    const totalByLocationAndProduct = new Map<string, Map<string, number>>();
 
     for (const item of items) {
-      totalByProduct.set(
+      const byProduct = totalByLocationAndProduct.get(item.locationId) ?? new Map<string, number>();
+
+      byProduct.set(
         item.productId,
-        (totalByProduct.get(item.productId) ?? 0) + item.quantityBase * factor,
+        (byProduct.get(item.productId) ?? 0) + item.quantityBase * factor,
       );
+      totalByLocationAndProduct.set(item.locationId, byProduct);
     }
 
-    const productsByDelta = new Map<number, string[]>();
+    const byLocation = new Map<string, Map<number, string[]>>();
 
-    for (const [productId, delta] of totalByProduct) {
-      if (delta === 0) {
-        continue;
+    for (const [locationId, byProduct] of totalByLocationAndProduct) {
+      const productsByDelta = new Map<number, string[]>();
+
+      for (const [productId, delta] of byProduct) {
+        if (delta === 0) {
+          continue;
+        }
+
+        const bucket = productsByDelta.get(delta);
+
+        if (bucket) {
+          bucket.push(productId);
+        } else {
+          productsByDelta.set(delta, [productId]);
+        }
       }
 
-      const bucket = productsByDelta.get(delta);
-
-      if (bucket) {
-        bucket.push(productId);
-      } else {
-        productsByDelta.set(delta, [productId]);
+      if (productsByDelta.size > 0) {
+        byLocation.set(locationId, productsByDelta);
       }
     }
 
-    return productsByDelta;
+    return byLocation;
   }
 
   /**
@@ -330,26 +379,25 @@ export class MovementsService {
    * concurrency; this pass exists so the caller is told which product is short
    * and by how much instead of getting a bare conflict.
    */
-  private async assertStockSurvives(
-    deltas: Map<number, string[]>,
-    locationId: string,
-  ): Promise<void> {
-    const productIds = [...deltas.values()].flat();
-    const levels = await this.stock.findLevels(productIds, locationId);
-    const onHand = new Map(levels.map((level) => [level.productId, level.quantityBase]));
-
+  private async assertStockSurvives(byLocation: Map<string, Map<number, string[]>>): Promise<void> {
     const short: string[] = [];
 
-    for (const [delta, ids] of deltas) {
-      if (delta >= 0) {
-        continue;
-      }
+    for (const [locationId, deltas] of byLocation) {
+      const productIds = [...deltas.values()].flat();
+      const levels = await this.stock.findLevels(productIds, locationId);
+      const onHand = new Map(levels.map((level) => [level.productId, level.quantityBase]));
 
-      for (const productId of ids) {
-        const available = onHand.get(productId) ?? 0;
+      for (const [delta, ids] of deltas) {
+        if (delta >= 0) {
+          continue;
+        }
 
-        if (available + delta < 0) {
-          short.push(`${productId} (on hand ${available}, needs ${-delta})`);
+        for (const productId of ids) {
+          const available = onHand.get(productId) ?? 0;
+
+          if (available + delta < 0) {
+            short.push(`${productId} (on hand ${available}, needs ${-delta})`);
+          }
         }
       }
     }
@@ -360,20 +408,22 @@ export class MovementsService {
   }
 
   private async applyDeltas(
-    deltas: Map<number, string[]>,
-    locationId: string,
+    byLocation: Map<string, Map<number, string[]>>,
     tx: PrismaTransaction,
   ): Promise<void> {
-    const productIds = [...deltas.values()].flat();
-    await this.stock.ensureRows(productIds, locationId, tx);
+    for (const [locationId, deltas] of byLocation) {
+      const productIds = [...deltas.values()].flat();
+      await this.stock.ensureRows(productIds, locationId, tx);
 
-    for (const [delta, ids] of deltas) {
-      const moved = await this.stock.applyDelta(ids, locationId, delta, tx);
+      for (const [delta, ids] of deltas) {
+        const moved = await this.stock.applyDelta(ids, locationId, delta, tx);
 
-      if (moved !== ids.length) {
-        // The guarded UPDATE refused a row the pre-check had cleared, which means
-        // stock moved underneath us. Rolling back is the only correct answer.
-        throw new ConflictException('Stock changed while the movement was being applied');
+        if (moved !== ids.length) {
+          // The guarded UPDATE refused a row the pre-check had cleared, which
+          // means stock moved underneath us. Rolling back is the only correct
+          // answer.
+          throw new ConflictException('Stock changed while the movement was being applied');
+        }
       }
     }
   }
@@ -383,6 +433,35 @@ export class MovementsService {
     if (!roleHasPermission(this.tenant.role, MOVEMENT_PERMISSION[type])) {
       throw new ForbiddenException(`You may not record ${type} movements`);
     }
+  }
+
+  /**
+   * @throws {BadRequestException} when a transfer names no destination, names one
+   * that does not exist, or names its own origin — which would write both halves
+   * against the same location and net to nothing.
+   */
+  private async resolveDestination(
+    type: MovementType,
+    locationId: string,
+    dto: { destinationLocationId?: string },
+  ): Promise<string | null> {
+    if (type !== MovementType.TRANSFER) {
+      if (dto.destinationLocationId) {
+        throw new BadRequestException(`A ${type} movement has no destination location`);
+      }
+
+      return null;
+    }
+
+    if (!dto.destinationLocationId) {
+      throw new BadRequestException('A transfer needs a destination location');
+    }
+
+    if (dto.destinationLocationId === locationId) {
+      throw new BadRequestException('A transfer needs two different locations');
+    }
+
+    return this.locations.resolve(dto.destinationLocationId);
   }
 
   /**

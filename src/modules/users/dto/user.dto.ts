@@ -100,12 +100,16 @@ export class CreateUserDto {
   @IsEnum(UserRole)
   role!: UserRole;
 
-  @ApiPropertyOptional({
-    description: 'Omit to create the user as INVITED, with no way in until a password is set',
-  })
-  @IsOptional()
+  /**
+   * Required until the invitation flow exists. Creating a user without one left
+   * them INVITED, and nothing could ever move them out of it: no endpoint sets
+   * another user's password, and `status: ACTIVE` alone does not let them in
+   * because the login also demands a password hash. That was a dead end with a
+   * green label on it, so the state is no longer reachable.
+   */
+  @ApiProperty({ description: 'At least 12 characters, with lowercase, uppercase and a digit' })
   @IsStrongPassword()
-  password?: string;
+  password!: string;
 }
 
 export class UpdateUserDto {

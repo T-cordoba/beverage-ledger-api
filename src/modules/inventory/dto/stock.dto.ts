@@ -1,8 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 import { MovementType, MovementUnit } from '../../../generated/prisma/enums';
+
+/** Bounds the URL, and no capture screen holds more lines than this at once. */
+const MAX_PRODUCT_IDS = 200;
 
 export class StockLevelDto {
   @ApiProperty({ format: 'uuid' })
@@ -58,6 +71,25 @@ export class ListStockDto extends CursorPaginationDto {
   @IsOptional()
   @IsUUID()
   locationId?: string;
+
+  /**
+   * Comma-separated, because a query string has no arrays and repeating the key
+   * is not what the generated client emits. Lets a caller ask what is on hand for
+   * a set it already has — the capture screen asking how much it may take out —
+   * without paging the whole catalogue to find it.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Comma-separated product ids. Narrows the page to those products',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value,
+  )
+  @IsArray()
+  @ArrayMaxSize(MAX_PRODUCT_IDS)
+  @IsUUID('all', { each: true })
+  productIds?: string[];
 }
 
 export class LowStockDto {
