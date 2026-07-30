@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { LocationsController } from './locations.controller';
 import { LocationsService } from './locations.service';
 import { MovementsController } from './movements.controller';
 import { MovementsService } from './movements.service';
@@ -12,7 +13,7 @@ import { StockService } from './stock.service';
 
 @Module({
   imports: [AuditModule, CatalogModule],
-  controllers: [MovementsController, StockController],
+  controllers: [MovementsController, StockController, LocationsController],
   providers: [
     MovementsService,
     StockService,

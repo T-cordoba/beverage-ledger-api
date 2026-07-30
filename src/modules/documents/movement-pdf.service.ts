@@ -1,11 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
-import { MovementUnit } from '../../generated/prisma/enums';
-import type { MovementDto } from '../inventory/dto/movement.dto';
+import { MovementType, MovementUnit } from '../../generated/prisma/enums';
+import type { MovementDto, MovementItemDto } from '../inventory/dto/movement.dto';
 import type { OrganizationDto } from '../organizations/dto/organization.dto';
 import { COLOR, COLUMNS, PAGE, TABLE_WIDTH, TEXT } from './movement-pdf.theme';
 
 const COMBINING_MARKS = /[̀-ͯ]/g;
+
+/**
+ * One row per product, also for a transfer.
+ *
+ * A transfer stores each product twice — the outgoing half and the incoming one —
+ * so printing the lines raw would list every product twice and double the total.
+ * The outgoing half is the one kept: it carries the same quantity, and the two
+ * warehouses belong in the header rather than in a duplicated row.
+ */
+function printableLines(movement: MovementDto): MovementItemDto[] {
+  if (movement.type !== MovementType.TRANSFER) {
+    return movement.items;
+  }
+
+  return movement.items.filter((item) => item.quantityBase < 0);
+}
 
 /**
  * The fonts, plus the only safe way to put user text through them.
@@ -87,7 +103,7 @@ export class MovementPdfService {
     document.setTitle(`${movement.code} - ${organization.name}`);
     document.setProducer('Beverage Ledger');
 
-    const rows = movement.items.map((item): Cell[] => [
+    const rows = printableLines(movement).map((item): Cell[] => [
       { text: type.printable(item.productNameSnapshot), align: 'left' },
       { text: type.printable(item.brandNameSnapshot ?? '-'), align: 'left' },
       { text: String(Math.abs(item.quantity)), align: 'right' },
@@ -318,7 +334,8 @@ export class MovementPdfService {
   }
 
   private drawTotals(page: PDFPage, y: number, movement: MovementDto, type: Typeset): void {
-    const singles = movement.items.reduce((total, item) => total + Math.abs(item.quantityBase), 0);
+    const lines = printableLines(movement);
+    const singles = lines.reduce((total, item) => total + Math.abs(item.quantityBase), 0);
     const box = { width: 200, height: 44 };
     const top = y - 16;
 
@@ -338,7 +355,7 @@ export class MovementPdfService {
       color: COLOR.dark,
     });
 
-    page.drawText(counted(movement.items.length, 'línea', 'líneas'), {
+    page.drawText(counted(lines.length, 'línea', 'líneas'), {
       x: PAGE.width - PAGE.margin - box.width + 12,
       y: top - 34,
       size: TEXT.small,

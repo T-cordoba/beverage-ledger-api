@@ -6,12 +6,23 @@ import { MovementStatus, MovementType, MovementUnit } from '../../../generated/p
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import type { PrismaTransaction } from '../../../infra/prisma/transaction';
 
+/**
+ * Declared apart from the select below: nesting it inside an `as const` object
+ * would type it as a readonly tuple, which is not what Prisma accepts.
+ */
+const ITEM_ORDER = [
+  { productNameSnapshot: 'asc' as const },
+  // Both halves of a transfer land together, outgoing first.
+  { quantityBase: 'asc' as const },
+];
+
 const MOVEMENT = {
   id: true,
   code: true,
   type: true,
   status: true,
   locationId: true,
+  destinationLocationId: true,
   occurredAt: true,
   reason: true,
   note: true,
@@ -23,13 +34,14 @@ const MOVEMENT = {
     select: {
       id: true,
       productId: true,
+      locationId: true,
       quantity: true,
       unit: true,
       quantityBase: true,
       productNameSnapshot: true,
       brandNameSnapshot: true,
     },
-    orderBy: { productNameSnapshot: 'asc' as const },
+    orderBy: ITEM_ORDER,
   },
 } as const;
 
@@ -46,6 +58,7 @@ const MOVEMENT_SUMMARY = {
 
 export interface MovementLineRow {
   productId: string;
+  locationId: string;
   quantity: number;
   unit: MovementUnit;
   quantityBase: number;
@@ -59,6 +72,7 @@ export interface MovementFilters {
   status?: MovementStatus;
   productId?: string;
   createdByUserId?: string;
+  locationId?: string;
   from?: Date;
   to?: Date;
 }
@@ -113,6 +127,7 @@ export class MovementsRepository extends BaseRepository {
       code: string;
       type: MovementType;
       locationId: string;
+      destinationLocationId: string | null;
       occurredAt: Date;
       reason: string | null;
       note: string | null;
@@ -152,7 +167,19 @@ export class MovementsRepository extends BaseRepository {
         ...(filters.type ? { type: filters.type } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.createdByUserId ? { createdByUserId: filters.createdByUserId } : {}),
-        ...(filters.productId ? { items: { some: { productId: filters.productId } } } : {}),
+        // One `some` for both, or the second key would overwrite the first. Asking
+        // the lines rather than the header is also what finds a transfer from
+        // either of its ends.
+        ...(filters.productId || filters.locationId
+          ? {
+              items: {
+                some: {
+                  ...(filters.productId ? { productId: filters.productId } : {}),
+                  ...(filters.locationId ? { locationId: filters.locationId } : {}),
+                },
+              },
+            }
+          : {}),
         ...(filters.from || filters.to
           ? {
               occurredAt: {
@@ -247,7 +274,9 @@ export class MovementsRepository extends BaseRepository {
         JOIN movements m ON m.id = mi.movement_id
         WHERE mi.product_id = ${productId}::uuid
           AND m.organization_id = ${this.organizationId}::uuid
-          AND m.location_id = ${locationId}::uuid
+          -- The line carries the location, not the header: a transfer belongs to
+          -- the kardex of both ends, with the sign each one saw.
+          AND mi.location_id = ${locationId}::uuid
           AND m.status = ${MovementStatus.CONFIRMED}::"MovementStatus"
       )
       SELECT * FROM ledger

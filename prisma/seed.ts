@@ -259,6 +259,7 @@ async function main(): Promise<void> {
             items: {
               create: lines.map((line) => ({
                 productId: line.productId,
+                locationId: location.id,
                 quantity: line.quantity,
                 unit: line.unit,
                 quantityBase: quantityBaseOf(line),

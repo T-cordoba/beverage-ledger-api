@@ -11,6 +11,7 @@ export enum Permission {
   MovementCreateOutbound = 'movement:create-outbound',
   MovementCreateInbound = 'movement:create-inbound',
   MovementCreateAdjustment = 'movement:create-adjustment',
+  MovementCreateTransfer = 'movement:create-transfer',
   MovementCancel = 'movement:cancel',
 
   StockRead = 'stock:read',
@@ -37,6 +38,9 @@ const MANAGER: readonly Permission[] = [
   ...OPERATOR,
   Permission.MovementCreateInbound,
   Permission.MovementCreateAdjustment,
+  // A transfer is an inbound at its destination, so it sits with the inbound and
+  // not with the outbound an operator may record on their own.
+  Permission.MovementCreateTransfer,
   Permission.MovementCancel,
   Permission.ReportRead,
 ];
@@ -67,6 +71,7 @@ export const MOVEMENT_PERMISSION: Readonly<Record<MovementType, Permission>> = {
   [MovementType.INBOUND]: Permission.MovementCreateInbound,
   [MovementType.OUTBOUND]: Permission.MovementCreateOutbound,
   [MovementType.ADJUSTMENT]: Permission.MovementCreateAdjustment,
+  [MovementType.TRANSFER]: Permission.MovementCreateTransfer,
 };
 
 /** Roles an ORG_ADMIN may hand out. PLATFORM_ADMIN is not one of them. */
