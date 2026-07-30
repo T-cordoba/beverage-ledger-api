@@ -12,6 +12,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 
@@ -20,6 +21,16 @@ export enum ProductSort {
   NameDesc = '-name',
   NewestFirst = '-createdAt',
   OldestFirst = 'createdAt',
+}
+
+/**
+ * Three states, which a boolean could not express: omitting it has to keep
+ * meaning "active only", so there was no value left for "both".
+ */
+export enum ProductStatusFilter {
+  Active = 'active',
+  Inactive = 'inactive',
+  All = 'all',
 }
 
 export class ProductReferenceDto {
@@ -146,11 +157,10 @@ export class ListProductsDto extends CursorPaginationDto {
   @Max(100)
   abv?: number;
 
-  @ApiPropertyOptional({ description: 'Defaults to active products only' })
+  @ApiPropertyOptional({ enum: ProductStatusFilter, default: ProductStatusFilter.Active })
   @IsOptional()
-  @Transform(toBoolean)
-  @IsBoolean()
-  isActive?: boolean = true;
+  @IsEnum(ProductStatusFilter)
+  status: ProductStatusFilter = ProductStatusFilter.Active;
 
   @ApiPropertyOptional({ enum: ProductSort, default: ProductSort.NameAsc })
   @IsOptional()
@@ -233,10 +243,16 @@ export class UpdateProductDto {
   @IsUUID()
   categoryId?: string;
 
-  @ApiPropertyOptional({ format: 'uuid' })
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Null unlinks the brand. Omitted leaves it as it is',
+  })
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsUUID()
-  brandId?: string;
+  brandId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

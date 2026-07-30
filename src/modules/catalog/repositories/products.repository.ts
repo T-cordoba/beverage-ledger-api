@@ -228,7 +228,8 @@ export class ProductsRepository extends BaseRepository {
     data: Partial<{
       name: string;
       categoryId: string;
-      brandId: string;
+      /** Null unlinks it: the column is nullable and the relation is SetNull. */
+      brandId: string | null;
       subcategory: string;
       abv: number;
       origin: string;
