@@ -42,6 +42,7 @@ export class ProductsService {
       age: query.age,
       abv: query.abv,
       isActive: ACTIVE_BY_STATUS[query.status],
+      productIds: query.productIds,
       sort: query.sort,
     });
 
