@@ -45,7 +45,7 @@ export class StockRepository extends BaseRepository {
     limit: number,
     cursor: string | undefined,
     locationId: string,
-    filters: { search?: string; categoryId?: string },
+    filters: { search?: string; categoryId?: string; productIds?: string[] },
   ): Promise<StockLevelDto[]> {
     const rows = await this.prisma.product.findMany({
       where: this.scopedWhere({
@@ -54,6 +54,7 @@ export class StockRepository extends BaseRepository {
           ? { name: { contains: filters.search, mode: 'insensitive' as const } }
           : {}),
         ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...(filters.productIds ? { id: { in: filters.productIds } } : {}),
       }),
       select: {
         id: true,
