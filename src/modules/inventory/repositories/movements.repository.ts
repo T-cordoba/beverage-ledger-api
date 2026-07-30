@@ -54,6 +54,7 @@ export interface MovementLineRow {
 }
 
 export interface MovementFilters {
+  search?: string;
   type?: MovementType;
   status?: MovementStatus;
   productId?: string;
@@ -145,6 +146,9 @@ export class MovementsRepository extends BaseRepository {
   async findPage(limit: number, cursor: string | undefined, filters: MovementFilters) {
     const rows = await this.prisma.movement.findMany({
       where: this.scopedWhere({
+        ...(filters.search
+          ? { code: { contains: filters.search, mode: 'insensitive' as const } }
+          : {}),
         ...(filters.type ? { type: filters.type } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.createdByUserId ? { createdByUserId: filters.createdByUserId } : {}),

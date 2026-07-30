@@ -51,6 +51,7 @@ export class MovementsService {
 
   async list(query: ListMovementsDto): Promise<MovementPageDto> {
     const rows = await this.movements.findPage(query.limit, query.cursor, {
+      search: query.search,
       type: query.type,
       status: query.status,
       productId: query.productId,

@@ -232,6 +232,12 @@ export class CancelMovementDto {
 }
 
 export class ListMovementsDto extends CursorPaginationDto {
+  @ApiPropertyOptional({ description: 'Matches part of the movement code, case-insensitively' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  search?: string;
+
   @ApiPropertyOptional({ enum: MovementType, enumName: 'MovementType' })
   @IsOptional()
   @IsEnum(MovementType)
