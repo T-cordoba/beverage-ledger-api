@@ -29,7 +29,7 @@ export class CursorPaginationDto {
 }
 
 export class PageMetaDto {
-  @ApiProperty({ description: 'Cursor for the next page', nullable: true })
+  @ApiProperty({ type: String, description: 'Cursor for the next page', nullable: true })
   nextCursor!: string | null;
 
   @ApiProperty({ description: 'Whether more items exist after this page' })

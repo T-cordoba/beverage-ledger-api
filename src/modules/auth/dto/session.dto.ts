@@ -12,7 +12,7 @@ export class SessionUserDto {
   @ApiProperty()
   name!: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   avatarUrl!: string | null;
 
   @ApiProperty({ enum: UserRole, enumName: 'UserRole' })
@@ -32,7 +32,7 @@ export class SessionOrganizationDto {
   @ApiProperty()
   slug!: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   logoUrl!: string | null;
 
   @ApiProperty()

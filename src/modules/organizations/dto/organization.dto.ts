@@ -12,10 +12,14 @@ export class OrganizationDto {
   @ApiProperty()
   slug!: string;
 
-  @ApiProperty({ nullable: true, description: 'Registered name, for documents that need it' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Registered name, for documents that need it',
+  })
   legalName!: string | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   logoUrl!: string | null;
 
   @ApiProperty({ description: 'IANA time zone. Reports bucket by it' })

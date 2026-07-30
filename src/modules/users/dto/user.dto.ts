@@ -26,7 +26,7 @@ export class UserDto {
   @ApiProperty()
   name!: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   avatarUrl!: string | null;
 
   @ApiProperty({ enum: UserRole, enumName: 'UserRole' })
@@ -61,7 +61,7 @@ export class UpdateProfileDto {
   @MaxLength(120)
   name?: string;
 
-  @ApiPropertyOptional({ nullable: true, format: 'uri' })
+  @ApiPropertyOptional({ type: String, nullable: true, format: 'uri' })
   @IsOptional()
   @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
   @MaxLength(2048)

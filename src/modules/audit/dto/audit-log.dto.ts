@@ -24,13 +24,13 @@ export class AuditLogDto {
   @ApiProperty({ example: 'movement' })
   entity!: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   entityId!: string | null;
 
   @ApiProperty({ type: Object, description: 'Flat scalar detail about the change' })
   metadata!: unknown;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   ipAddress!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time' })

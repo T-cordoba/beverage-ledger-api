@@ -41,7 +41,7 @@ export class MovementItemDto {
   @ApiProperty({ description: 'The product name as it stood when the line was written' })
   productNameSnapshot!: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   brandNameSnapshot!: string | null;
 }
 
@@ -72,10 +72,10 @@ export class MovementDto {
   @ApiProperty({ type: String, format: 'date-time', description: 'When it happened' })
   occurredAt!: Date;
 
-  @ApiProperty({ nullable: true, description: 'Mandatory on adjustments' })
+  @ApiProperty({ type: String, nullable: true, description: 'Mandatory on adjustments' })
   reason!: string | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   note!: string | null;
 
   @ApiProperty({ type: MovementActorDto })
@@ -111,7 +111,7 @@ export class MovementSummaryDto {
   @ApiProperty({ type: String, format: 'date-time' })
   occurredAt!: Date;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   note!: string | null;
 
   @ApiProperty({ type: MovementActorDto })

@@ -11,7 +11,7 @@ export class StockLevelDto {
   @ApiProperty()
   productName!: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   brandName!: string | null;
 
   @ApiProperty()
@@ -23,7 +23,11 @@ export class StockLevelDto {
   @ApiProperty({ description: 'Singles per case' })
   caseSize!: number;
 
-  @ApiProperty({ nullable: true, description: 'Reorder threshold. Null means no alert' })
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Reorder threshold. Null means no alert',
+  })
   minimumStock!: number | null;
 
   @ApiProperty({ description: 'Whether it sits at or under the reorder threshold' })

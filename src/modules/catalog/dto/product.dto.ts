@@ -43,22 +43,26 @@ export class ProductDto {
   @ApiProperty({ type: ProductReferenceDto, nullable: true })
   brand!: ProductReferenceDto | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   subcategory!: string | null;
 
-  @ApiProperty({ nullable: true, description: 'Alcohol by volume, as a percentage' })
+  @ApiProperty({ type: Number, nullable: true, description: 'Alcohol by volume, as a percentage' })
   abv!: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   origin!: string | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   age!: string | null;
 
   @ApiProperty({ description: 'Singles per case; normalizes quantities to base units' })
   caseSize!: number;
 
-  @ApiProperty({ nullable: true, description: 'Reorder threshold. Null means no alert' })
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Reorder threshold. Null means no alert',
+  })
   minimumStock!: number | null;
 
   @ApiProperty()
@@ -165,7 +169,7 @@ export class CreateProductDto {
   @IsUUID()
   categoryId!: string;
 
-  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
   @IsOptional()
   @IsUUID()
   brandId?: string;
