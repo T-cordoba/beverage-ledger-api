@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '../../../common/repositories/base.repository';
 import { TenantContextService } from '../../../common/tenant/tenant-context.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import { ProductSort, type ProductDto } from '../dto/product.dto';
+import { ProductSort, type ProductDto, type ProductFacetsDto } from '../dto/product.dto';
+
+const isPresent = <T>(value: T | null): value is T => value !== null;
 
 const PRODUCT = {
   id: true,
@@ -58,6 +60,10 @@ export interface ProductFilters {
   search?: string;
   categoryId?: string;
   brandId?: string;
+  origin?: string;
+  subcategory?: string;
+  age?: string;
+  abv?: number;
   isActive?: boolean;
   sort: ProductSort;
 }
@@ -91,6 +97,10 @@ export class ProductsRepository extends BaseRepository {
           : {}),
         ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
         ...(filters.brandId ? { brandId: filters.brandId } : {}),
+        ...(filters.origin ? { origin: filters.origin } : {}),
+        ...(filters.subcategory ? { subcategory: filters.subcategory } : {}),
+        ...(filters.age ? { age: filters.age } : {}),
+        ...(filters.abv === undefined ? {} : { abv: filters.abv }),
         ...(filters.isActive === undefined ? {} : { isActive: filters.isActive }),
       }),
       select: PRODUCT,
@@ -100,6 +110,44 @@ export class ProductsRepository extends BaseRepository {
     });
 
     return rows.map(toDto);
+  }
+
+  /** Four grouped scans over the active catalogue, one per filterable column. */
+  async findFacets(): Promise<ProductFacetsDto> {
+    const active = this.scopedWhere({ isActive: true });
+
+    const [origins, subcategories, ages, abvs] = await Promise.all([
+      this.prisma.product.groupBy({
+        by: ['origin'],
+        where: { ...active, origin: { not: null } },
+        orderBy: { origin: 'asc' },
+      }),
+      this.prisma.product.groupBy({
+        by: ['subcategory'],
+        where: { ...active, subcategory: { not: null } },
+        orderBy: { subcategory: 'asc' },
+      }),
+      this.prisma.product.groupBy({
+        by: ['age'],
+        where: { ...active, age: { not: null } },
+        orderBy: { age: 'asc' },
+      }),
+      this.prisma.product.groupBy({
+        by: ['abv'],
+        where: { ...active, abv: { not: null } },
+        orderBy: { abv: 'asc' },
+      }),
+    ]);
+
+    return {
+      origins: origins.map((row) => row.origin).filter(isPresent),
+      subcategories: subcategories.map((row) => row.subcategory).filter(isPresent),
+      ages: ages.map((row) => row.age).filter(isPresent),
+      abvs: abvs
+        .map((row) => row.abv)
+        .filter(isPresent)
+        .map(Number),
+    };
   }
 
   async findById(id: string): Promise<ProductDto | null> {

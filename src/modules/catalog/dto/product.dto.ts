@@ -73,6 +73,26 @@ export class ProductPageDto {
   meta!: PageMetaDto;
 }
 
+/**
+ * The distinct values behind the filters that are plain columns rather than
+ * relations. Categories and brands have their own endpoints; these four do not,
+ * and a client cannot derive them without downloading the whole catalogue —
+ * which is what the filters exist to avoid.
+ */
+export class ProductFacetsDto {
+  @ApiProperty({ type: String, isArray: true })
+  origins!: string[];
+
+  @ApiProperty({ type: String, isArray: true })
+  subcategories!: string[];
+
+  @ApiProperty({ type: String, isArray: true })
+  ages!: string[];
+
+  @ApiProperty({ type: Number, isArray: true, description: 'Ascending' })
+  abvs!: number[];
+}
+
 const toBoolean = ({ value }: { value: unknown }): unknown => {
   if (value === 'true') return true;
   if (value === 'false') return false;
@@ -95,6 +115,32 @@ export class ListProductsDto extends CursorPaginationDto {
   @IsOptional()
   @IsUUID()
   brandId?: string;
+
+  @ApiPropertyOptional({ description: 'Exact match, from the values in /products/facets' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  origin?: string;
+
+  @ApiPropertyOptional({ description: 'Exact match, from the values in /products/facets' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  subcategory?: string;
+
+  @ApiPropertyOptional({ description: 'Exact match, from the values in /products/facets' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  age?: string;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  abv?: number;
 
   @ApiPropertyOptional({ description: 'Defaults to active products only' })
   @IsOptional()

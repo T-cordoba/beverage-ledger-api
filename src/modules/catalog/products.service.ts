@@ -11,6 +11,7 @@ import type {
   CreateProductDto,
   ListProductsDto,
   ProductDto,
+  ProductFacetsDto,
   ProductPageDto,
   UpdateProductDto,
 } from './dto/product.dto';
@@ -28,11 +29,19 @@ export class ProductsService {
       search: query.search,
       categoryId: query.categoryId,
       brandId: query.brandId,
+      origin: query.origin,
+      subcategory: query.subcategory,
+      age: query.age,
+      abv: query.abv,
       isActive: query.isActive,
       sort: query.sort,
     });
 
     return toPage(rows, query.limit);
+  }
+
+  facets(): Promise<ProductFacetsDto> {
+    return this.products.findFacets();
   }
 
   /** @throws {NotFoundException} which is also the answer for another organization's product. */

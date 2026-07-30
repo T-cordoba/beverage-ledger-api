@@ -15,6 +15,7 @@ import {
   CreateProductDto,
   ListProductsDto,
   ProductDto,
+  ProductFacetsDto,
   ProductPageDto,
   UpdateProductDto,
 } from './dto/product.dto';
@@ -32,6 +33,14 @@ export class ProductsController {
   @ApiOkResponse({ type: ProductPageDto })
   list(@Query() query: ListProductsDto): Promise<ProductPageDto> {
     return this.products.list(query);
+  }
+
+  /** Declared before `:id`, or the pipe on that route would reject "facets". */
+  @Get('facets')
+  @ApiOperation({ summary: 'Distinct origins, subcategories, ages and ABVs, for the filters' })
+  @ApiOkResponse({ type: ProductFacetsDto })
+  facets(): Promise<ProductFacetsDto> {
+    return this.products.facets();
   }
 
   @Get(':id')
