@@ -127,24 +127,45 @@ Decisiones que quedaron tomadas al construirlo:
 
 ## 3. Comandos
 
+**El gestor de paquetes es pnpm**, fijado en `packageManager` del `package.json`. No uses `npm install` en este repo: generaría un `package-lock.json` paralelo y te saltarías la configuración de seguridad de abajo.
+
 ```bash
-npm run start:dev     # desarrollo con watch, en :3001
-npm run build         # compila a dist/
-npm run start:prod    # sirve el build
+pnpm install                    # instalar dependencias (genera el cliente Prisma)
+pnpm install --frozen-lockfile  # lo que hace CI: falla si el lockfile no cuadra
 
-npm run lint          # ESLint
-npm run typecheck     # tsc --noEmit
-npm run format        # Prettier
+pnpm start:dev        # desarrollo con watch, en :3001
+pnpm build            # compila a dist/
+pnpm start:prod       # sirve el build
 
-npm run db:migrate    # prisma migrate dev
-npm run db:generate   # regenera el cliente en src/generated/prisma
-npm run db:seed       # catálogo completo, stock en CERO
-npm run db:seed:demo  # además, stock simulado e histórico de salidas
-npm run db:studio     # inspector de datos
-npm run db:reset      # borra y rehace todo (destructivo)
+pnpm lint             # ESLint
+pnpm typecheck        # tsc --noEmit
+pnpm format           # Prettier
+
+pnpm db:migrate       # prisma migrate dev
+pnpm db:generate      # regenera el cliente en src/generated/prisma
+pnpm db:seed          # catálogo completo, stock en CERO
+pnpm db:seed:demo     # además, stock simulado e histórico de salidas
+pnpm db:studio        # inspector de datos
+pnpm db:reset         # borra y rehace todo (destructivo)
 ```
 
 Postgres local para desarrollo: `docker compose up -d`. Levanta dos bases — la de trabajo en el puerto **5434** (no 5432, para no chocar con un Postgres instalado en la máquina) y la de sombra en el **5433**.
+
+### Por qué pnpm, y qué protege de verdad
+
+Misma postura que el repo del front, y por las mismas razones. pnpm instala **del mismo registro que npm**: no te salva de que un paquete publique una versión comprometida. Lo que aporta está en `pnpm-workspace.yaml`:
+
+- **Ningún paquete puede correr scripts de instalación** (`onlyBuiltDependencies` vacío). Es el vector que usó el gusano Shai-Hulud en 2025, y en npm los `postinstall` corren todos sin preguntar. Cinco paquetes piden uno y **ninguno lo necesita**, comprobado: `prisma` y `@prisma/engines` (el generador `prisma-client` con driver adapters no descarga motor), `argon2` y `esbuild` (traen binarios precompilados como dependencias opcionales) y `@scarf/scarf`, que es telemetría de instalación que no tenemos por qué ejecutar.
+- **Cuarentena de 24h** (`minimumReleaseAge: 1440`), que solo afecta a resolver dependencias nuevas, no a instalar desde el lockfile.
+- **`node_modules` estricto**: un paquete solo ve lo que declara.
+
+`prisma generate` se movió al `postinstall` **del propio repo**, que sí corre porque `onlyBuiltDependencies` solo restringe a las dependencias. Así un clone nuevo compila tras un único `pnpm install`, sin tener que darle permiso de ejecución a `@prisma/client`.
+
+### Avisos de seguridad
+
+Queda **1 abierto a propósito**: GHSA-mh99-v99m-4gvg contra `brace-expansion`, por la vía `@eslint/eslintrc > minimatch@3`. La 1.1.17 ya es la última de su línea y el aviso solo se considera corregido en `>=5.0.8`, cuya exportación CommonJS pasó a ser un objeto namespace que `minimatch@3` no puede invocar — forzarlo lo rompe en cualquier patrón con llaves, y ESLint sigue saliendo limpio, así que no se notaría. La vía real es que los consumidores suban a `minimatch@10`, que en este mismo árbol ya convive con `brace-expansion@5`. Es un DoS en tooling de desarrollo, con patrones de nuestra propia config.
+
+**No escribas los overrides con `pnpm audit --fix`**: emite reemplazos tipo `'>=5.2.2'` que pnpm resuelve a la versión más alta del registro y cruzan de major en silencio. Y **nunca `audit fix --force`**.
 
 ---
 
@@ -328,7 +349,7 @@ Un commit reúne un cambio con una sola intención, con un máximo orientativo d
 ## 8. Trampas conocidas
 
 - **Prisma 7 exige un driver adapter.** No hay motor embebido por defecto: `PrismaClient` se construye con `PrismaPg`. La documentación de Prisma 6 que circula por internet no aplica.
-- **El cliente generado vive en `src/generated/prisma`** y está gitignoreado. Tras clonar hay que correr `npm run db:generate` o nada compila.
+- **El cliente generado vive en `src/generated/prisma`** y está gitignoreado. Tras clonar se genera solo en el `postinstall`; si hace falta rehacerlo, `pnpm db:generate`.
 - **Solo `PrismaService` y el seed pueden importar `PrismaClient`.** Hay una regla de ESLint que lo impone; los services usan repositorios.
 - **Los guards corren antes que los pipes.** El `ValidationPipe` no ha tocado el body cuando `LocalStrategy` lo lee, así que `LoginDto` es documentación y nada más: el email se normaliza en `AuthService.validateCredentials`. Cualquier estrategia de Passport que dependa de un DTO transformado tiene el mismo problema.
 - **En un `.env` no existe "ausente".** Una variable sin usar queda como `KEY=""` y llega como cadena vacía, que revienta cualquier `min(1)`. Por eso las variables opcionales pasan por el helper `optional()` de `env.validation.ts`, que convierte `''` en `undefined`.

@@ -5,8 +5,10 @@
   "author": "Tomás Córdoba Urquijo",
   "private": true,
   "license": "PROPRIETARY",
+  "packageManager": "pnpm@10.32.1",
   "scripts": {
     "build": "nest build",
+    "postinstall": "prisma generate",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",

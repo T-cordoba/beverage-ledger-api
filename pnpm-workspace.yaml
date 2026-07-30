@@ -1,0 +1,35 @@
+# Supply-chain hardening. See CLAUDE.md §3.
+#
+# No dependency is allowed to run install scripts. Five ask for one and none of
+# them needs it, verified: prisma and @prisma/engines (the `prisma-client`
+# generator plus driver adapters need no engine download — `prisma generate`
+# works), argon2 and esbuild (both ship prebuilt platform binaries as optional
+# dependencies), and @scarf/scarf, which is install-time telemetry we have no
+# reason to run at all.
+onlyBuiltDependencies: []
+
+ignoredBuiltDependencies:
+  - '@prisma/engines'
+  - '@scarf/scarf'
+  - argon2
+  - esbuild
+  - prisma
+
+# Refuse packages published less than 24h ago. Compromised versions are usually
+# detected and unpublished within hours, so this is what stops a freshly
+# published malicious release from landing here. It only affects resolution —
+# adding or bumping a dependency — not installs from the existing lockfile.
+minimumReleaseAge: 1440
+
+# Patched version of a vulnerable transitive dependency. Written by hand, not by
+# `pnpm audit --fix`, which emits replacements like '>=5.2.2' that resolve to the
+# highest version on the registry and cross majors silently.
+#
+# One advisory stays open on purpose: GHSA-mh99-v99m-4gvg against
+# brace-expansion, reached through @eslint/eslintrc > minimatch@3. 1.1.17 is
+# already the newest release on that line and the advisory is only marked fixed
+# in >=5.0.8, whose CommonJS export became a namespace object that minimatch@3
+# cannot call. The real fix is consumers moving to minimatch@10, which already
+# pairs with brace-expansion@5 elsewhere in this same tree. See CLAUDE.md §3.
+overrides:
+  js-yaml@5: ^5.2.2

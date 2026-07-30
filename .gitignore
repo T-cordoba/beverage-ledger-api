@@ -6,7 +6,7 @@ node_modules
 .env*
 !.env.example
 
-# Prisma client, regenerated with `npm run db:generate`
+# Prisma client, regenerated with `pnpm db:generate` (also on postinstall)
 /src/generated
 
 # Reference docs installed by `prisma init` for AI assistants

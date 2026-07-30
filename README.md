@@ -33,15 +33,15 @@ Requisitos: Node.js 20.19+, Docker (opcional, para la base local).
 ```bash
 git clone https://github.com/T-cordoba/beverage-ledger-api.git
 cd beverage-ledger-api
-npm install
+pnpm install
 
 cp .env.example .env     # y rellenar los valores
 
 docker compose up -d     # Postgres local (puertos 5434 y 5433)
-npm run db:migrate       # aplica las migraciones
-npm run db:seed:demo     # catálogo + datos de demostración
+pnpm db:migrate       # aplica las migraciones
+pnpm db:seed:demo     # catálogo + datos de demostración
 
-npm run start:dev
+pnpm start:dev
 ```
 
 La API queda en `http://localhost:3001/api/v1` y Swagger en `http://localhost:3001/docs`.
@@ -62,8 +62,8 @@ El pooler en modo transacción no puede ejecutar migraciones. Y si la contraseñ
 ### Seed
 
 ```bash
-npm run db:seed        # 215 licores, 14 categorías, 160 marcas, stock en CERO
-npm run db:seed:demo   # lo anterior + apertura de inventario e histórico de salidas
+pnpm db:seed        # 215 licores, 14 categorías, 160 marcas, stock en CERO
+pnpm db:seed:demo   # lo anterior + apertura de inventario e histórico de salidas
 ```
 
 La distinción es deliberada: un negocio recién dado de alta arranca con el inventario vacío y solo tiene existencias cuando alguien registra entradas. El stock simulado existe únicamente para que la demo se vea viva, y se genera con un PRNG con semilla fija para que sea idéntico en cualquier máquina.
@@ -101,15 +101,15 @@ Lo que llega cuando el SaaS sea concreto: alta de organizaciones, facturación, 
 
 | Comando | Qué hace |
 |---|---|
-| `npm run start:dev` | Desarrollo con recarga |
-| `npm run build` / `start:prod` | Compila y sirve |
-| `npm run lint` / `typecheck` / `format` | Calidad de código |
-| `npm run db:migrate` | Crea y aplica una migración |
-| `npm run db:generate` | Regenera el cliente de Prisma |
-| `npm run db:studio` | Inspector de datos |
-| `npm run db:reset` | Borra y rehace la base (destructivo) |
+| `pnpm start:dev` | Desarrollo con recarga |
+| `pnpm build` / `start:prod` | Compila y sirve |
+| `pnpm lint` / `typecheck` / `format` | Calidad de código |
+| `pnpm db:migrate` | Crea y aplica una migración |
+| `pnpm db:generate` | Regenera el cliente de Prisma |
+| `pnpm db:studio` | Inspector de datos |
+| `pnpm db:reset` | Borra y rehace la base (destructivo) |
 
-El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: tras clonar hay que correr `npm run db:generate`.
+El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: tras clonar hay que correr `pnpm db:generate`.
 
 ---
 
@@ -127,7 +127,7 @@ Toda ruta nueva nace protegida: el `JwtAuthGuard` es global y hay que marcarla `
 
 El login con Google solo se activa si defines `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL`; sin ellas la API arranca igual y esas rutas responden 501.
 
-Para que el administrador sembrado pueda entrar, define `SEED_ADMIN_PASSWORD` en tu `.env` y corre `npm run db:seed`. Sin esa variable queda como `INVITED` y sin forma de autenticarse, que es el comportamiento correcto para un repositorio.
+Para que el administrador sembrado pueda entrar, define `SEED_ADMIN_PASSWORD` en tu `.env` y corre `pnpm db:seed`. Sin esa variable queda como `INVITED` y sin forma de autenticarse, que es el comportamiento correcto para un repositorio.
 
 ---
 

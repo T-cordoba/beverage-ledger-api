@@ -2,5 +2,5 @@ dist
 node_modules
 src/generated
 prisma/data
-package-lock.json
+pnpm-lock.yaml
 *.md
