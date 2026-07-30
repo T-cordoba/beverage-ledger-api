@@ -1,0 +1,51 @@
+# Render blueprint. Secrets are marked `sync: false`: Render asks for them once
+# in the dashboard and never stores them in the repository.
+services:
+  - type: web
+    name: beverage-ledger-api
+    runtime: node
+    plan: free
+    # Same region as the Supabase project (us-east-2) to keep the round trip short.
+    region: ohio
+
+    # Migrations run here, not at start: `migrate deploy` is idempotent and a
+    # failure must abort the deploy instead of crash-looping a live instance.
+    # Render's pre-deploy hook, where this belongs, is a paid feature.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm db:deploy
+    startCommand: pnpm start:prod
+
+    # Answers 503 when Postgres is unreachable, so a bad deploy never goes live.
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      # Corepack prompts before downloading the pinned pnpm outside a TTY it
+      # recognizes as CI, and a prompt hangs the build.
+      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
+        value: '0'
+
+      - key: NODE_ENV
+        value: production
+      - key: API_PREFIX
+        value: api/v1
+      - key: SWAGGER_ENABLED
+        value: 'true'
+
+      # PORT is injected by Render; setting it here would override the binding.
+
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+      # Both are the Vercel origin, and CORS_ORIGINS has no trailing slash.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      - key: DEFAULT_ORGANIZATION_SLUG
+        value: demo

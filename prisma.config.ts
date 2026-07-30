@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import { defineConfig, env } from 'prisma/config';
 
+// Read directly rather than through `env()`, which throws on a missing variable:
+// the shadow database is development-only and `migrate deploy` never creates
+// one, so demanding it would break the deployment build.
+const shadowDatabaseUrl = process.env.SHADOW_DATABASE_URL || undefined;
+
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
@@ -16,6 +21,6 @@ export default defineConfig({
     // `migrate dev` creates and drops a shadow database to detect drift, which
     // Supabase's application role is not allowed to do, so it points at the
     // local docker-compose Postgres.
-    shadowDatabaseUrl: env('SHADOW_DATABASE_URL'),
+    ...(shadowDatabaseUrl ? { shadowDatabaseUrl } : {}),
   },
 });
