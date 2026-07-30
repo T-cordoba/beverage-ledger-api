@@ -31,6 +31,8 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 
 **Con la Fase 3 el backend está completo.** Lo que sigue ocurre entero en el repo del front (Fases 4 a 8); aquí no hay trabajo pendiente salvo lo listado en "Deuda consciente" más abajo.
 
+**Desplegado y funcionando** en Render: `https://beverage-ledger-api.onrender.com`. Ver §4.
+
 Plan completo en el repo del front: `C:\Users\Tomas\.claude\plans\ok-voy-a-hacerle-tender-sprout.md`
 
 ### Dónde quedó la Fase 1
@@ -180,13 +182,29 @@ Hay **dos conexiones al mismo Postgres** y no son intercambiables:
 
 El pooler en modo transacción **no puede ejecutar migraciones**. El reparto está hecho en `prisma.config.ts` (migraciones → `DIRECT_URL`) y en `src/infra/prisma/prisma.service.ts` (runtime → `DATABASE_URL`).
 
-`SHADOW_DATABASE_URL` apunta al Postgres de docker-compose: `migrate dev` necesita crear y destruir una base para detectar drift, y el rol de aplicación de Supabase no puede. Solo hace falta en desarrollo — `migrate deploy` no usa base de sombra.
+`SHADOW_DATABASE_URL` apunta al Postgres de docker-compose: `migrate dev` necesita crear y destruir una base para detectar drift, y el rol de aplicación de Supabase no puede. Solo hace falta en desarrollo — `migrate deploy` no usa base de sombra, y por eso `prisma.config.ts` la lee con `process.env` y no con el helper `env()` de Prisma, que **lanza** cuando la variable falta y rompería el build de despliegue.
 
 Si una contraseña contiene `/ % @ :` hay que **URL-encodearla** o la conexión falla con un error de parseo poco descriptivo.
 
 `JWT_SECRET` es obligatoria y de 32 caracteres mínimo; genérala con `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Las de Google son opcionales pero se validan **como conjunto**: las tres o ninguna, para que una configuración a medias falle al arrancar y no en mitad del callback.
 
 **Ningún módulo lee `process.env` directamente.** Todo pasa por `src/config/configuration.ts`, que valida el entorno con Zod al arrancar y llega tipado vía `ConfigService<AppConfig, true>`. Si falta o está mal una variable, el proceso no arranca — a diferencia del proyecto original, que fallaba en la primera consulta con un error indescifrable.
+
+### Despliegue
+
+La API vive en **Render** (`https://beverage-ledger-api.onrender.com`) y el front en **Vercel**, descritos en `render.yaml`. Los secretos van marcados `sync: false`: Render los pide una vez en el panel y nunca tocan el repositorio.
+
+Las migraciones corren en el `buildCommand`, no al arrancar: `migrate deploy` es idempotente y un fallo debe abortar el despliegue en vez de dejar una instancia en bucle de reinicio. El *pre-deploy hook* de Render, que es donde corresponderían, es de pago.
+
+Detalles que costaron un despliegue fallido cada uno:
+
+- **`PORT` la inyecta Render.** Declararla en el blueprint pisaría el binding.
+- **`FRONTEND_URL` es `z.url()`**, así que sin `https://` no arranca. Dejar el campo en blanco en el panel produce cadena vacía, que es la misma trampa del `.env` de §8.
+- **`CORS_ORIGINS` no valida nada** (`z.string()`), así que un valor roto no falla al arrancar: falla en el navegador. Es lista separada por comas e incluye `http://localhost:3000` a propósito, para poder correr el front local contra la API desplegada — el camino cuando la red de turno bloquea el puerto de Supabase.
+- **`NODE_ENV=production` cambia la cookie de refresh** a `Secure; SameSite=None`. Ver la trampa de Safari en §8.
+- **El plan free duerme a los 15 minutos** y despertar cuesta ~50s. Un cron externo cada 10 minutos contra `/api/v1/health` lo evita y de paso impide que Supabase se pause por inactividad, pero 24/7 consume ~730 de las 750 horas mensuales del plan: entra un servicio free, no dos.
+
+`SEED_ADMIN_PASSWORD` **no** está en Render: la lee el seed, no la API. La credencial del admin vive como hash argon2 en `users.password_hash`.
 
 ---
 
