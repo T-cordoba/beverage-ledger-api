@@ -65,6 +65,7 @@ export interface ProductFilters {
   age?: string;
   abv?: number;
   isActive?: boolean;
+  productIds?: string[];
   sort: ProductSort;
 }
 
@@ -102,6 +103,7 @@ export class ProductsRepository extends BaseRepository {
         ...(filters.age ? { age: filters.age } : {}),
         ...(filters.abv === undefined ? {} : { abv: filters.abv }),
         ...(filters.isActive === undefined ? {} : { isActive: filters.isActive }),
+        ...(filters.productIds ? { id: { in: filters.productIds } } : {}),
       }),
       select: PRODUCT,
       orderBy: ORDER_BY[filters.sort],

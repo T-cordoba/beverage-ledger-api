@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -15,6 +17,9 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+
+/** Bounds the URL. No movement carries more lines than this either. */
+const MAX_PRODUCT_IDS = 200;
 
 export enum ProductSort {
   NameAsc = 'name',
@@ -161,6 +166,24 @@ export class ListProductsDto extends CursorPaginationDto {
   @IsOptional()
   @IsEnum(ProductStatusFilter)
   status: ProductStatusFilter = ProductStatusFilter.Active;
+
+  /**
+   * Comma-separated, because a query string has no arrays. Lets a caller resolve
+   * a set it already holds — a movement being resumed on another device naming
+   * the products of its lines — without paging the catalogue to find them.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Comma-separated product ids. Narrows the page to those products',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.split(',').filter(Boolean) : value,
+  )
+  @IsArray()
+  @ArrayMaxSize(MAX_PRODUCT_IDS)
+  @IsUUID('all', { each: true })
+  productIds?: string[];
 
   @ApiPropertyOptional({ enum: ProductSort, default: ProductSort.NameAsc })
   @IsOptional()
