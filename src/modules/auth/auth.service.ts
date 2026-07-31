@@ -19,13 +19,25 @@ import { AuthRepository, type UserCredentials } from './repositories/auth.reposi
 import { TokenService, type RequestOrigin } from './token.service';
 
 /**
- * One message for every way a sign-in can fail.
+ * One message for every way a sign-in can fail *before* the password is proven.
  *
  * Distinguishing "no such email" from "wrong password" from "locked" turns the
  * endpoint into an account-enumeration oracle, which is worth more to an
  * attacker than the hint is to a user.
  */
 const INVALID_CREDENTIALS = 'Invalid email or password';
+
+/**
+ * Said only once the password has verified.
+ *
+ * At that point the caller already holds the credentials, so naming the reason
+ * gives away nothing they could not confirm another way — while withholding it
+ * sends a suspended user off to reset a password that was never the problem.
+ */
+const NOT_SIGNABLE: Record<Exclude<UserStatus, typeof UserStatus.ACTIVE>, string> = {
+  [UserStatus.SUSPENDED]: 'This account is suspended. Ask an administrator to restore it.',
+  [UserStatus.INVITED]: 'This invitation has not been accepted yet.',
+};
 
 export interface GoogleProfile {
   providerAccountId: string;
@@ -110,19 +122,24 @@ export class AuthService {
    * Every rejection path runs an argon2 verification, real or decoy, so that
    * response time does not tell an unknown email from a known one.
    *
-   * @throws {UnauthorizedException} always with the same message.
+   * The account's status is checked *after* the password rather than alongside
+   * the other guards. Checking it first is what made a suspended user read
+   * "invalid email or password" and go hunting for a typo they had not made.
+   *
+   * @throws {UnauthorizedException} with INVALID_CREDENTIALS until the password
+   * verifies, and only then with the actual reason.
    */
   async validateCredentials(email: string, password: string): Promise<AuthenticatedUser> {
     // Normalized here and not by the DTO: guards run before pipes, so the local
     // strategy reads the raw body and LoginDto never touches it.
     const user = await this.users.findByEmail(email.trim().toLowerCase());
 
-    if (!user || user.status !== UserStatus.ACTIVE || !user.passwordHash || this.isLocked(user)) {
+    if (!user || !user.passwordHash || this.isLocked(user)) {
       await this.passwords.verifyDecoy(password);
       // An unknown email has no organization to file an audit entry under, so
       // only attempts against a real account are recorded.
       if (user) {
-        await this.recordSignInFailure(user, this.isLocked(user) ? 'locked' : 'not-signable');
+        await this.recordSignInFailure(user, this.isLocked(user) ? 'locked' : 'no-password');
       }
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
@@ -131,6 +148,11 @@ export class AuthService {
       await this.registerFailedAttempt(user);
       await this.recordSignInFailure(user, 'bad-password');
       throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      await this.recordSignInFailure(user, 'not-signable');
+      throw new UnauthorizedException(NOT_SIGNABLE[user.status]);
     }
 
     return this.completeSignIn(user, 'password');
