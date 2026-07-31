@@ -16,7 +16,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+import { PagePaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 
 /** Bounds the URL. No movement carries more lines than this either. */
 const MAX_PRODUCT_IDS = 200;
@@ -119,7 +119,7 @@ const toBoolean = ({ value }: { value: unknown }): unknown => {
   return value;
 };
 
-export class ListProductsDto extends CursorPaginationDto {
+export class ListProductsDto extends PagePaginationDto {
   @ApiPropertyOptional({ description: 'Matches part of the name, case-insensitively' })
   @IsOptional()
   @IsString()

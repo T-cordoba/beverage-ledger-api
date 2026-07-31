@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+import { PagePaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 
 export class BrandDto {
   @ApiProperty({ format: 'uuid' })
@@ -24,7 +24,7 @@ export class BrandPageDto {
   meta!: PageMetaDto;
 }
 
-export class ListBrandsDto extends CursorPaginationDto {
+export class ListBrandsDto extends PagePaginationDto {
   @ApiPropertyOptional({ description: 'Matches part of the name, case-insensitively' })
   @IsOptional()
   @IsString()

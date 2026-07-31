@@ -84,34 +84,39 @@ export class ProductsRepository extends BaseRepository {
     super(prisma, tenant);
   }
 
-  /** Fetches one extra row: that is how the caller knows another page exists. */
+  /** Rows and total in one round trip, both taken from the same `where`. */
   async findPage(
-    limit: number,
-    cursor: string | undefined,
+    skip: number,
+    take: number,
     filters: ProductFilters,
-  ): Promise<ProductDto[]> {
-    const rows = await this.prisma.product.findMany({
-      where: this.scopedWhere({
-        // Served by the pg_trgm index; a btree cannot answer a leading wildcard.
-        ...(filters.search
-          ? { name: { contains: filters.search, mode: 'insensitive' as const } }
-          : {}),
-        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
-        ...(filters.brandId ? { brandId: filters.brandId } : {}),
-        ...(filters.origin ? { origin: filters.origin } : {}),
-        ...(filters.subcategory ? { subcategory: filters.subcategory } : {}),
-        ...(filters.age ? { age: filters.age } : {}),
-        ...(filters.abv === undefined ? {} : { abv: filters.abv }),
-        ...(filters.isActive === undefined ? {} : { isActive: filters.isActive }),
-        ...(filters.productIds ? { id: { in: filters.productIds } } : {}),
-      }),
-      select: PRODUCT,
-      orderBy: ORDER_BY[filters.sort],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  ): Promise<{ rows: ProductDto[]; total: number }> {
+    const where = this.scopedWhere({
+      // Served by the pg_trgm index; a btree cannot answer a leading wildcard.
+      ...(filters.search
+        ? { name: { contains: filters.search, mode: 'insensitive' as const } }
+        : {}),
+      ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+      ...(filters.brandId ? { brandId: filters.brandId } : {}),
+      ...(filters.origin ? { origin: filters.origin } : {}),
+      ...(filters.subcategory ? { subcategory: filters.subcategory } : {}),
+      ...(filters.age ? { age: filters.age } : {}),
+      ...(filters.abv === undefined ? {} : { abv: filters.abv }),
+      ...(filters.isActive === undefined ? {} : { isActive: filters.isActive }),
+      ...(filters.productIds ? { id: { in: filters.productIds } } : {}),
     });
 
-    return rows.map(toDto);
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where,
+        select: PRODUCT,
+        orderBy: ORDER_BY[filters.sort],
+        skip,
+        take,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { rows: rows.map(toDto), total };
   }
 
   /** Four grouped scans over the active catalogue, one per filterable column. */

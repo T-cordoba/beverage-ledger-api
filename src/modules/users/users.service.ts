@@ -5,7 +5,8 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
+import type { PagePaginationDto } from '../../common/dto/pagination.dto';
 import { ASSIGNABLE_ROLES } from '../../common/permissions/permissions.config';
 import { UserRole, UserStatus } from '../../generated/prisma/enums';
 import { AuditAction, AuditEntity } from '../audit/audit.actions';
@@ -33,8 +34,9 @@ export class UsersService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(limit: number, cursor?: string): Promise<UserPageDto> {
-    return toPage(await this.users.findPage(limit, cursor), limit);
+  async list(query: PagePaginationDto): Promise<UserPageDto> {
+    const { rows, total } = await this.users.findPage(skipOf(query), query.pageSize);
+    return toPage(rows, total, query);
   }
 
   /** @throws {NotFoundException} which is also the answer for another organization's user. */

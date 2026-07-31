@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
 import { ProductsService } from '../catalog/products.service';
 import type {
   KardexPageDto,
@@ -25,13 +25,13 @@ export class StockService {
   async list(query: ListStockDto): Promise<StockPageDto> {
     const locationId = await this.locations.resolve(query.locationId);
 
-    const rows = await this.stock.findPage(query.limit, query.cursor, locationId, {
+    const { rows, total } = await this.stock.findPage(skipOf(query), query.pageSize, locationId, {
       search: query.search,
       categoryId: query.categoryId,
       productIds: query.productIds,
     });
 
-    return toPage(rows, query.limit, (row) => row.productId);
+    return toPage(rows, total, query);
   }
 
   /** What the dashboard shows as needing a reorder. Not paginated: it is a shortlist. */
@@ -52,12 +52,17 @@ export class StockService {
     await this.products.findOne(productId);
 
     const locationId = await this.locations.resolve(query.locationId);
-    const rows = await this.movements.kardex(productId, locationId, query.limit, query.cursor);
+    const { rows, total } = await this.movements.kardex(
+      productId,
+      locationId,
+      skipOf(query),
+      query.pageSize,
+    );
 
     // SUM over an integer column comes back as bigint, which does not survive
     // JSON. The running total of a stock column cannot overflow a JS number.
     const entries = rows.map((row) => ({ ...row, balanceAfter: Number(row.balanceAfter) }));
 
-    return toPage(entries, query.limit);
+    return toPage(entries, total, query);
   }
 }

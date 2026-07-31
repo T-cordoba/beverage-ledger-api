@@ -11,7 +11,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+import { PagePaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 import { MovementType, MovementUnit } from '../../../generated/prisma/enums';
 
 /** Bounds the URL, and no capture screen holds more lines than this at once. */
@@ -55,7 +55,7 @@ export class StockPageDto {
   meta!: PageMetaDto;
 }
 
-export class ListStockDto extends CursorPaginationDto {
+export class ListStockDto extends PagePaginationDto {
   @ApiPropertyOptional({ description: 'Matches part of the product name' })
   @IsOptional()
   @IsString()
@@ -145,7 +145,7 @@ export class KardexPageDto {
   meta!: PageMetaDto;
 }
 
-export class ListKardexDto extends CursorPaginationDto {
+export class ListKardexDto extends PagePaginationDto {
   @ApiPropertyOptional({ format: 'uuid', description: 'Defaults to the default location' })
   @IsOptional()
   @IsUUID()

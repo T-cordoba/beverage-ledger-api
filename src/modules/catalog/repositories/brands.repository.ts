@@ -31,19 +31,28 @@ export class BrandsRepository extends BaseRepository {
     super(prisma, tenant);
   }
 
-  /** Fetches one extra row: that is how the caller knows another page exists. */
-  async findPage(limit: number, cursor: string | undefined, search?: string): Promise<BrandDto[]> {
-    const rows = await this.prisma.brand.findMany({
-      where: this.scopedWhere(
-        search ? { name: { contains: search, mode: 'insensitive' as const } } : {},
-      ),
-      select: BRAND,
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+  /** Rows and total in one round trip, both taken from the same `where`. */
+  async findPage(
+    skip: number,
+    take: number,
+    search?: string,
+  ): Promise<{ rows: BrandDto[]; total: number }> {
+    const where = this.scopedWhere(
+      search ? { name: { contains: search, mode: 'insensitive' as const } } : {},
+    );
 
-    return rows.map(toDto);
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.brand.findMany({
+        where,
+        select: BRAND,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+      }),
+      this.prisma.brand.count({ where }),
+    ]);
+
+    return { rows: rows.map(toDto), total };
   }
 
   async findById(id: string): Promise<BrandDto | null> {

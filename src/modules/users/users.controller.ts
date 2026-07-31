@@ -26,7 +26,7 @@ import {
 import type { AuthenticatedUser } from '../../common/auth/authenticated-user';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
-import { CursorPaginationDto } from '../../common/dto/pagination.dto';
+import { PagePaginationDto } from '../../common/dto/pagination.dto';
 import { Permission } from '../../common/permissions/permissions.config';
 import {
   ChangePasswordDto,
@@ -71,8 +71,8 @@ export class UsersController {
   @RequirePermissions(Permission.UserManage)
   @ApiOperation({ summary: 'List the organization members' })
   @ApiOkResponse({ type: UserPageDto })
-  list(@Query() query: CursorPaginationDto): Promise<UserPageDto> {
-    return this.users.list(query.limit, query.cursor);
+  list(@Query() query: PagePaginationDto): Promise<UserPageDto> {
+    return this.users.list(query);
   }
 
   @Post()

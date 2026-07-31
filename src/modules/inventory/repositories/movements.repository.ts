@@ -157,45 +157,53 @@ export class MovementsRepository extends BaseRepository {
     });
   }
 
-  /** Fetches one extra row: that is how the caller knows another page exists. */
-  async findPage(limit: number, cursor: string | undefined, filters: MovementFilters) {
-    const rows = await this.prisma.movement.findMany({
-      where: this.scopedWhere({
-        ...(filters.search
-          ? { code: { contains: filters.search, mode: 'insensitive' as const } }
-          : {}),
-        ...(filters.type ? { type: filters.type } : {}),
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.createdByUserId ? { createdByUserId: filters.createdByUserId } : {}),
-        // One `some` for both, or the second key would overwrite the first. Asking
-        // the lines rather than the header is also what finds a transfer from
-        // either of its ends.
-        ...(filters.productId || filters.locationId
-          ? {
-              items: {
-                some: {
-                  ...(filters.productId ? { productId: filters.productId } : {}),
-                  ...(filters.locationId ? { locationId: filters.locationId } : {}),
-                },
+  /** Rows and total in one round trip, both taken from the same `where`. */
+  async findPage(skip: number, take: number, filters: MovementFilters) {
+    const where = this.scopedWhere({
+      ...(filters.search
+        ? { code: { contains: filters.search, mode: 'insensitive' as const } }
+        : {}),
+      ...(filters.type ? { type: filters.type } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.createdByUserId ? { createdByUserId: filters.createdByUserId } : {}),
+      // One `some` for both, or the second key would overwrite the first. Asking
+      // the lines rather than the header is also what finds a transfer from
+      // either of its ends.
+      ...(filters.productId || filters.locationId
+        ? {
+            items: {
+              some: {
+                ...(filters.productId ? { productId: filters.productId } : {}),
+                ...(filters.locationId ? { locationId: filters.locationId } : {}),
               },
-            }
-          : {}),
-        ...(filters.from || filters.to
-          ? {
-              occurredAt: {
-                ...(filters.from ? { gte: filters.from } : {}),
-                ...(filters.to ? { lte: filters.to } : {}),
-              },
-            }
-          : {}),
-      }),
-      select: MOVEMENT_SUMMARY,
-      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+            },
+          }
+        : {}),
+      ...(filters.from || filters.to
+        ? {
+            occurredAt: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              ...(filters.to ? { lte: filters.to } : {}),
+            },
+          }
+        : {}),
     });
 
-    return rows.map(({ _count, ...row }) => ({ ...row, itemCount: _count.items }));
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.movement.findMany({
+        where,
+        select: MOVEMENT_SUMMARY,
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.movement.count({ where }),
+    ]);
+
+    return {
+      rows: rows.map(({ _count, ...row }) => ({ ...row, itemCount: _count.items })),
+      total,
+    };
   }
 
   /**
@@ -242,53 +250,71 @@ export class MovementsRepository extends BaseRepository {
     }
   }
 
-  /** Confirmed lines for one product, oldest first, with the running balance. */
-  kardex(productId: string, locationId: string, limit: number, cursor: string | undefined) {
-    return this.prisma.$queryRaw<
-      {
-        id: string;
-        movementId: string;
-        movementCode: string;
-        type: MovementType;
-        occurredAt: Date;
-        quantity: number;
-        unit: MovementUnit;
-        quantityBase: number;
-        balanceAfter: bigint;
-      }[]
-    >`
-      WITH ledger AS (
-        SELECT mi.id,
-               mi.movement_id     AS "movementId",
-               m.code             AS "movementCode",
-               m.type,
-               m.occurred_at      AS "occurredAt",
-               mi.quantity,
-               mi.unit,
-               mi.quantity_base   AS "quantityBase",
-               SUM(mi.quantity_base) OVER (
-                 ORDER BY m.occurred_at, mi.id
-                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-               ) AS "balanceAfter"
+  /**
+   * Confirmed lines for one product, newest first, each with the balance it left
+   * behind, plus how many lines there are in total.
+   *
+   * The filter is built once and shared by both queries: a COUNT that drifts
+   * from the rows it is counting makes the pager point at pages that are not
+   * there.
+   */
+  async kardex(productId: string, locationId: string, skip: number, take: number) {
+    const filter = Prisma.sql`
+      mi.product_id = ${productId}::uuid
+      AND m.organization_id = ${this.organizationId}::uuid
+      -- The line carries the location, not the header: a transfer belongs to the
+      -- kardex of both ends, with the sign each one saw.
+      AND mi.location_id = ${locationId}::uuid
+      AND m.status = ${MovementStatus.CONFIRMED}::"MovementStatus"
+    `;
+
+    const [rows, totals] = await Promise.all([
+      this.prisma.$queryRaw<
+        {
+          id: string;
+          movementId: string;
+          movementCode: string;
+          type: MovementType;
+          occurredAt: Date;
+          quantity: number;
+          unit: MovementUnit;
+          quantityBase: number;
+          balanceAfter: bigint;
+        }[]
+      >`
+        WITH ledger AS (
+          SELECT mi.id,
+                 mi.movement_id     AS "movementId",
+                 m.code             AS "movementCode",
+                 m.type,
+                 m.occurred_at      AS "occurredAt",
+                 mi.quantity,
+                 mi.unit,
+                 mi.quantity_base   AS "quantityBase",
+                 -- The running balance is cumulative from the beginning of the
+                 -- ledger, so the window has to see every line even when the
+                 -- page being served is the last one.
+                 SUM(mi.quantity_base) OVER (
+                   ORDER BY m.occurred_at, mi.id
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                 ) AS "balanceAfter"
+          FROM movement_items mi
+          JOIN movements m ON m.id = mi.movement_id
+          WHERE ${filter}
+        )
+        SELECT * FROM ledger
+        ORDER BY "occurredAt" DESC, id DESC
+        LIMIT ${take} OFFSET ${skip}
+      `,
+      this.prisma.$queryRaw<{ total: bigint }[]>`
+        SELECT COUNT(*) AS total
         FROM movement_items mi
         JOIN movements m ON m.id = mi.movement_id
-        WHERE mi.product_id = ${productId}::uuid
-          AND m.organization_id = ${this.organizationId}::uuid
-          -- The line carries the location, not the header: a transfer belongs to
-          -- the kardex of both ends, with the sign each one saw.
-          AND mi.location_id = ${locationId}::uuid
-          AND m.status = ${MovementStatus.CONFIRMED}::"MovementStatus"
-      )
-      SELECT * FROM ledger
-      ${
-        cursor
-          ? Prisma.sql`WHERE ("occurredAt", id) < (
-              SELECT "occurredAt", id FROM ledger WHERE id = ${cursor}::uuid
-            )`
-          : Prisma.empty
-      }
-      ORDER BY "occurredAt" DESC, id DESC
-      LIMIT ${limit + 1}
-    `;
+        WHERE ${filter}
+      `,
+    ]);
+
+    // COUNT comes back as bigint, which does not survive JSON.
+    return { rows, total: Number(totals[0]?.total ?? 0) };
   }
 }

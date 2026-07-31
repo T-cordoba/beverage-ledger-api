@@ -34,23 +34,28 @@ export class CategoriesRepository extends BaseRepository {
     super(prisma, tenant);
   }
 
-  /** Fetches one extra row: that is how the caller knows another page exists. */
+  /** Rows and total in one round trip, both taken from the same `where`. */
   async findPage(
-    limit: number,
-    cursor: string | undefined,
+    skip: number,
+    take: number,
     search?: string,
-  ): Promise<CategoryDto[]> {
-    const rows = await this.prisma.category.findMany({
-      where: this.scopedWhere(
-        search ? { name: { contains: search, mode: 'insensitive' as const } } : {},
-      ),
-      select: CATEGORY,
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+  ): Promise<{ rows: CategoryDto[]; total: number }> {
+    const where = this.scopedWhere(
+      search ? { name: { contains: search, mode: 'insensitive' as const } } : {},
+    );
 
-    return rows.map(toDto);
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.category.findMany({
+        where,
+        select: CATEGORY,
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+      }),
+      this.prisma.category.count({ where }),
+    ]);
+
+    return { rows: rows.map(toDto), total };
   }
 
   async findById(id: string): Promise<CategoryDto | null> {

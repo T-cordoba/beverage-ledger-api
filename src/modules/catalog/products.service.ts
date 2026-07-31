@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
 import { AuditAction, AuditEntity } from '../audit/audit.actions';
 import { AuditService } from '../audit/audit.service';
 import type {
@@ -33,7 +33,7 @@ export class ProductsService {
   ) {}
 
   async list(query: ListProductsDto): Promise<ProductPageDto> {
-    const rows = await this.products.findPage(query.limit, query.cursor, {
+    const { rows, total } = await this.products.findPage(skipOf(query), query.pageSize, {
       search: query.search,
       categoryId: query.categoryId,
       brandId: query.brandId,
@@ -46,7 +46,7 @@ export class ProductsService {
       sort: query.sort,
     });
 
-    return toPage(rows, query.limit);
+    return toPage(rows, total, query);
   }
 
   facets(): Promise<ProductFacetsDto> {

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
 import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import type { PrismaTransaction } from '../../infra/prisma/transaction';
 import type { AuditAction, AuditEntity } from './audit.actions';
@@ -51,7 +51,7 @@ export class AuditService {
   }
 
   async list(query: ListAuditLogsDto): Promise<AuditLogPageDto> {
-    const rows = await this.logs.findPage(query.limit, query.cursor, {
+    const { rows, total } = await this.logs.findPage(skipOf(query), query.pageSize, {
       entity: query.entity,
       entityId: query.entityId,
       action: query.action,
@@ -60,7 +60,7 @@ export class AuditService {
       to: query.to,
     });
 
-    return toPage(rows, query.limit);
+    return toPage(rows, total, query);
   }
 
   /** @throws {Error} when called with no organization in context and none given. */

@@ -16,7 +16,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+import { PagePaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 import { MovementStatus, MovementType, MovementUnit } from '../../../generated/prisma/enums';
 
 /** Guards against a single request trying to move the whole catalogue at once. */
@@ -256,7 +256,7 @@ export class CancelMovementDto {
   reason!: string;
 }
 
-export class ListMovementsDto extends CursorPaginationDto {
+export class ListMovementsDto extends PagePaginationDto {
   @ApiPropertyOptional({ description: 'Matches part of the movement code, case-insensitively' })
   @IsOptional()
   @IsString()

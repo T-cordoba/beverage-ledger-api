@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
 import {
   MOVEMENT_PERMISSION,
   roleHasPermission,
@@ -50,7 +50,7 @@ export class MovementsService {
   ) {}
 
   async list(query: ListMovementsDto): Promise<MovementPageDto> {
-    const rows = await this.movements.findPage(query.limit, query.cursor, {
+    const { rows, total } = await this.movements.findPage(skipOf(query), query.pageSize, {
       search: query.search,
       type: query.type,
       status: query.status,
@@ -61,7 +61,7 @@ export class MovementsService {
       to: query.to,
     });
 
-    return toPage(rows, query.limit);
+    return toPage(rows, total, query);
   }
 
   /** @throws {NotFoundException} which is also the answer for another organization's movement. */

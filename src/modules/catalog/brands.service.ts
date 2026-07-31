@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
 import { slugify } from '../../common/utils/slug';
 import { AuditAction, AuditEntity } from '../audit/audit.actions';
 import { AuditService } from '../audit/audit.service';
@@ -20,8 +20,8 @@ export class BrandsService {
   ) {}
 
   async list(query: ListBrandsDto): Promise<BrandPageDto> {
-    const rows = await this.brands.findPage(query.limit, query.cursor, query.search);
-    return toPage(rows, query.limit);
+    const { rows, total } = await this.brands.findPage(skipOf(query), query.pageSize, query.search);
+    return toPage(rows, total, query);
   }
 
   /** @throws {NotFoundException} which is also the answer for another organization's brand. */

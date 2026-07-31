@@ -24,15 +24,22 @@ export class UsersRepository extends BaseRepository {
     super(prisma, tenant);
   }
 
-  /** Fetches one extra row: that is how the caller knows another page exists. */
-  findPage(limit: number, cursor?: string) {
-    return this.prisma.user.findMany({
-      where: this.scopedWhere(),
-      select: USER,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+  /** Rows and total in one round trip, both taken from the same `where`. */
+  async findPage(skip: number, take: number) {
+    const where = this.scopedWhere();
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        select: USER,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return { rows, total };
   }
 
   findById(id: string) {

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsDate, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { CursorPaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+import { PagePaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
 
 export class AuditLogActorDto {
   @ApiProperty({ format: 'uuid' })
@@ -48,7 +48,7 @@ export class AuditLogPageDto {
   meta!: PageMetaDto;
 }
 
-export class ListAuditLogsDto extends CursorPaginationDto {
+export class ListAuditLogsDto extends PagePaginationDto {
   @ApiPropertyOptional({ example: 'movement' })
   @IsOptional()
   @IsString()

@@ -42,35 +42,40 @@ export class StockRepository extends BaseRepository {
    * moved still appears, at zero, instead of vanishing from the inventory.
    */
   async findPage(
-    limit: number,
-    cursor: string | undefined,
+    skip: number,
+    take: number,
     locationId: string,
     filters: { search?: string; categoryId?: string; productIds?: string[] },
-  ): Promise<StockLevelDto[]> {
-    const rows = await this.prisma.product.findMany({
-      where: this.scopedWhere({
-        isActive: true,
-        ...(filters.search
-          ? { name: { contains: filters.search, mode: 'insensitive' as const } }
-          : {}),
-        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
-        ...(filters.productIds ? { id: { in: filters.productIds } } : {}),
-      }),
-      select: {
-        id: true,
-        name: true,
-        caseSize: true,
-        minimumStock: true,
-        category: { select: { name: true } },
-        brand: { select: { name: true } },
-        stockLevels: { where: { locationId }, select: { quantityBase: true } },
-      },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  ): Promise<{ rows: StockLevelDto[]; total: number }> {
+    const where = this.scopedWhere({
+      isActive: true,
+      ...(filters.search
+        ? { name: { contains: filters.search, mode: 'insensitive' as const } }
+        : {}),
+      ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+      ...(filters.productIds ? { id: { in: filters.productIds } } : {}),
     });
 
-    return rows.map(toDto);
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          caseSize: true,
+          minimumStock: true,
+          category: { select: { name: true } },
+          brand: { select: { name: true } },
+          stockLevels: { where: { locationId }, select: { quantityBase: true } },
+        },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { rows: rows.map(toDto), total };
   }
 
   /**

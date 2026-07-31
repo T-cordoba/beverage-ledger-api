@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { toPage } from '../../common/dto/paginate';
+import { skipOf, toPage } from '../../common/dto/paginate';
 import { slugify } from '../../common/utils/slug';
 import { AuditAction, AuditEntity } from '../audit/audit.actions';
 import { AuditService } from '../audit/audit.service';
@@ -20,8 +20,13 @@ export class CategoriesService {
   ) {}
 
   async list(query: ListCategoriesDto): Promise<CategoryPageDto> {
-    const rows = await this.categories.findPage(query.limit, query.cursor, query.search);
-    return toPage(rows, query.limit);
+    const { rows, total } = await this.categories.findPage(
+      skipOf(query),
+      query.pageSize,
+      query.search,
+    );
+
+    return toPage(rows, total, query);
   }
 
   /** @throws {NotFoundException} which is also the answer for another organization's category. */

@@ -1,29 +1,26 @@
-import type { PageDto } from './pagination.dto';
+import type { PageDto, PagePaginationDto } from './pagination.dto';
+
+/** Rows a 1-based page has to step over, so no caller works out an offset. */
+export const skipOf = (query: PagePaginationDto): number => (query.page - 1) * query.pageSize;
 
 /**
- * Turns the `limit + 1` rows a repository fetches into a page.
+ * Pairs one page of rows with the count of everything that matched.
  *
- * The extra row is never returned: its only job is to answer whether another
- * page exists without a second COUNT query.
- *
- * The cursor is the row's `id` unless the caller says otherwise, which stock
- * does — its rows are keyed by product.
+ * The count has to come from the same `where` as the rows or the pager lies
+ * about how many pages there are, which is why every repository issues both
+ * together instead of exposing a counter a caller could let drift.
  */
-export function toPage<T extends { id: string }>(rows: T[], limit: number): PageDto<T>;
-export function toPage<T>(rows: T[], limit: number, cursorOf: (row: T) => string): PageDto<T>;
-export function toPage<T>(rows: T[], limit: number, cursorOf?: (row: T) => string): PageDto<T> {
-  const hasMore = rows.length > limit;
-  const data = hasMore ? rows.slice(0, limit) : rows;
-  const last = data[data.length - 1];
-
-  const readCursor = cursorOf ?? ((row: T) => (row as { id: string }).id);
-
+export function toPage<T>(rows: T[], total: number, query: PagePaginationDto): PageDto<T> {
   return {
-    data,
+    data: rows,
     meta: {
-      nextCursor: hasMore && last !== undefined ? readCursor(last) : null,
-      hasMore,
-      count: data.length,
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      // An empty list is still one page: a pager with zero pages has nothing to
+      // render, and "page 1 of 0" reads like a bug.
+      pageCount: Math.max(1, Math.ceil(total / query.pageSize)),
+      count: rows.length,
     },
   };
 }

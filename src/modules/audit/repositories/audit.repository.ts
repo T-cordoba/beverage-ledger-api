@@ -57,26 +57,34 @@ export class AuditRepository extends BaseRepository {
     });
   }
 
-  findPage(limit: number, cursor: string | undefined, filters: AuditLogFilters) {
-    return this.prisma.auditLog.findMany({
-      where: this.scopedWhere({
-        ...(filters.entity ? { entity: filters.entity } : {}),
-        ...(filters.entityId ? { entityId: filters.entityId } : {}),
-        ...(filters.action ? { action: filters.action } : {}),
-        ...(filters.userId ? { userId: filters.userId } : {}),
-        ...(filters.from || filters.to
-          ? {
-              createdAt: {
-                ...(filters.from ? { gte: filters.from } : {}),
-                ...(filters.to ? { lte: filters.to } : {}),
-              },
-            }
-          : {}),
-      }),
-      select: AUDIT_LOG,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  /** Rows and total in one round trip, both taken from the same `where`. */
+  async findPage(skip: number, take: number, filters: AuditLogFilters) {
+    const where = this.scopedWhere({
+      ...(filters.entity ? { entity: filters.entity } : {}),
+      ...(filters.entityId ? { entityId: filters.entityId } : {}),
+      ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.userId ? { userId: filters.userId } : {}),
+      ...(filters.from || filters.to
+        ? {
+            createdAt: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              ...(filters.to ? { lte: filters.to } : {}),
+            },
+          }
+        : {}),
     });
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({
+        where,
+        select: AUDIT_LOG,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { rows, total };
   }
 }
