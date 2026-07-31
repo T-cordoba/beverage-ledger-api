@@ -50,8 +50,6 @@ export const configuration = () => {
       lockoutMinutes: env.LOGIN_LOCKOUT_MINUTES,
     },
 
-    defaultOrganizationSlug: env.DEFAULT_ORGANIZATION_SLUG,
-
     /** Null when no credentials are configured; the Google routes then 501. */
     google: env.GOOGLE_CLIENT_ID
       ? {

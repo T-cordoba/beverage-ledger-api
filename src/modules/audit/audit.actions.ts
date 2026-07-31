@@ -7,10 +7,12 @@
 export const AuditAction = {
   UserSignedIn: 'user.signed-in',
   UserSignInFailed: 'user.sign-in-failed',
-  UserRegistered: 'user.registered',
   UserPasswordChanged: 'user.password-changed',
-  UserCreated: 'user.created',
   UserUpdated: 'user.updated',
+
+  InvitationCreated: 'invitation.created',
+  InvitationRevoked: 'invitation.revoked',
+  InvitationAccepted: 'invitation.accepted',
 
   OrganizationUpdated: 'organization.updated',
 
@@ -38,6 +40,7 @@ export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 
 export const AuditEntity = {
   User: 'user',
+  Invitation: 'invitation',
   Organization: 'organization',
   Category: 'category',
   Brand: 'brand',

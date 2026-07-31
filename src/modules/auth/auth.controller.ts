@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   HttpCode,
@@ -13,9 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   ApiBody,
-  ApiConflictResponse,
   ApiCookieAuth,
-  ApiCreatedResponse,
   ApiExcludeEndpoint,
   ApiOkResponse,
   ApiOperation,
@@ -32,7 +29,7 @@ import type { AppConfig } from '../../config/configuration';
 import { AuthCookieService } from './auth-cookie.service';
 import { AUTH_THROTTLE } from './auth.throttle';
 import { AuthService, type IssuedSession } from './auth.service';
-import { LoginDto, RegisterDto } from './dto/credentials.dto';
+import { LoginDto } from './dto/credentials.dto';
 import { CurrentSessionDto, SessionDto } from './dto/session.dto';
 import { GoogleAuthGuard, GoogleCallbackGuard } from './guards/google-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -51,21 +48,6 @@ export class AuthController {
     config: ConfigService<AppConfig, true>,
   ) {
     this.frontendUrl = config.get('frontendUrl', { infer: true });
-  }
-
-  @Post('register')
-  @Public()
-  @Throttle({ default: AUTH_THROTTLE })
-  @ApiOperation({ summary: 'Register and open a session' })
-  @ApiCreatedResponse({ type: SessionDto })
-  @ApiConflictResponse({ description: 'The email is already registered' })
-  async register(
-    @Body() dto: RegisterDto,
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
-  ): Promise<SessionDto> {
-    const user = await this.auth.register(dto);
-    return this.deliver(await this.auth.issueSession(user, this.originOf(request)), response);
   }
 
   @Post('login')

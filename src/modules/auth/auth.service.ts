@@ -1,19 +1,12 @@
-import {
-  ConflictException,
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AuthenticatedUser } from '../../common/auth/authenticated-user';
 import { permissionsFor } from '../../common/permissions/permissions.config';
 import type { AppConfig } from '../../config/configuration';
-import { AuthProvider, UserRole, UserStatus } from '../../generated/prisma/enums';
+import { AuthProvider, UserStatus } from '../../generated/prisma/enums';
 import { AuditAction, AuditEntity } from '../audit/audit.actions';
 import { AuditService } from '../audit/audit.service';
 import type { CurrentSessionDto, SessionDto, SessionUserDto } from './dto/session.dto';
-import type { RegisterDto } from './dto/credentials.dto';
 import { PasswordService } from './password.service';
 import { AuthRepository, type UserCredentials } from './repositories/auth.repository';
 import { TokenService, type RequestOrigin } from './token.service';
@@ -54,10 +47,8 @@ export interface IssuedSession {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
   private readonly maxAttempts: number;
   private readonly lockoutMinutes: number;
-  private readonly defaultOrganizationSlug: string;
 
   constructor(
     private readonly users: AuthRepository,
@@ -69,51 +60,6 @@ export class AuthService {
     const login = config.get('login', { infer: true });
     this.maxAttempts = login.maxAttempts;
     this.lockoutMinutes = login.lockoutMinutes;
-    this.defaultOrganizationSlug = config.get('defaultOrganizationSlug', { infer: true });
-  }
-
-  /**
-   * Self-registration into the default organization, as the lowest role. Creating
-   * organizations is deferred until the SaaS is real, and an admin promotes from
-   * the admin panel.
-   *
-   * @throws {ConflictException} when the email is taken. This does reveal that an
-   * account exists — hiding it means answering 201 and settling the truth over
-   * email, which needs delivery this project does not have yet.
-   */
-  async register(dto: RegisterDto): Promise<AuthenticatedUser> {
-    const organization = await this.users.findOrganizationBySlug(this.defaultOrganizationSlug);
-
-    if (!organization) {
-      this.logger.error(
-        `DEFAULT_ORGANIZATION_SLUG points at "${this.defaultOrganizationSlug}", which does not exist. Run the seed.`,
-      );
-      throw new ServiceUnavailableException('Registration is unavailable');
-    }
-
-    if (await this.users.findByEmail(dto.email)) {
-      throw new ConflictException('That email is already registered');
-    }
-
-    const created = await this.users.createUser({
-      organizationId: organization.id,
-      email: dto.email,
-      name: dto.name,
-      passwordHash: await this.passwords.hash(dto.password),
-      role: UserRole.OPERATOR,
-      status: UserStatus.ACTIVE,
-    });
-
-    await this.audit.record({
-      action: AuditAction.UserRegistered,
-      entity: AuditEntity.User,
-      entityId: created.id,
-      organizationId: organization.id,
-      userId: created.id,
-      metadata: { email: created.email },
-    });
-
-    return this.toAuthenticatedUser(created);
   }
 
   /**
@@ -183,49 +129,23 @@ export class AuthService {
 
     const existing = await this.users.findByEmail(profile.email);
 
-    if (existing) {
-      if (existing.status === UserStatus.SUSPENDED) {
-        throw new UnauthorizedException('This account is suspended');
-      }
-
-      await this.users.linkIdentity(existing.id, AuthProvider.GOOGLE, profile.providerAccountId);
-      const confirmed = await this.users.confirmGoogleLink(existing.id, profile.avatarUrl);
-
-      return this.completeSignIn(confirmed, 'google');
-    }
-
-    const organization = await this.users.findOrganizationBySlug(this.defaultOrganizationSlug);
-
-    if (!organization) {
-      this.logger.error(
-        `DEFAULT_ORGANIZATION_SLUG points at "${this.defaultOrganizationSlug}", which does not exist. Run the seed.`,
+    if (!existing) {
+      // Google used to mint an account here for any address that showed up,
+      // which was self-registration wearing a different hat. Membership comes
+      // from an invitation now, and Google only attaches to what one created.
+      throw new UnauthorizedException(
+        'No account uses that address. Ask an administrator to invite you',
       );
-      throw new ServiceUnavailableException('Sign-in is unavailable');
     }
 
-    const created = await this.users.createUser({
-      organizationId: organization.id,
-      email: profile.email,
-      name: profile.name,
-      avatarUrl: profile.avatarUrl,
-      passwordHash: null,
-      role: UserRole.OPERATOR,
-      status: UserStatus.ACTIVE,
-      emailVerifiedAt: new Date(),
-    });
+    if (existing.status === UserStatus.SUSPENDED) {
+      throw new UnauthorizedException('This account is suspended');
+    }
 
-    await this.users.linkIdentity(created.id, AuthProvider.GOOGLE, profile.providerAccountId);
+    await this.users.linkIdentity(existing.id, AuthProvider.GOOGLE, profile.providerAccountId);
+    const confirmed = await this.users.confirmGoogleLink(existing.id, profile.avatarUrl);
 
-    await this.audit.record({
-      action: AuditAction.UserRegistered,
-      entity: AuditEntity.User,
-      entityId: created.id,
-      organizationId: created.organizationId,
-      userId: created.id,
-      metadata: { email: created.email, method: 'google' },
-    });
-
-    return this.completeSignIn(created, 'google');
+    return this.completeSignIn(confirmed, 'google');
   }
 
   async issueSession(user: AuthenticatedUser, origin: RequestOrigin): Promise<IssuedSession> {

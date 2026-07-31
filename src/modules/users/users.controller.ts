@@ -7,15 +7,12 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
-  Post,
   Put,
   Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
-  ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -30,7 +27,6 @@ import { PagePaginationDto } from '../../common/dto/pagination.dto';
 import { Permission } from '../../common/permissions/permissions.config';
 import {
   ChangePasswordDto,
-  CreateUserDto,
   UpdateProfileDto,
   UpdateUserDto,
   UserDto,
@@ -73,15 +69,6 @@ export class UsersController {
   @ApiOkResponse({ type: UserPageDto })
   list(@Query() query: PagePaginationDto): Promise<UserPageDto> {
     return this.users.list(query);
-  }
-
-  @Post()
-  @RequirePermissions(Permission.UserManage)
-  @ApiOperation({ summary: 'Add a member to the organization' })
-  @ApiCreatedResponse({ type: UserDto })
-  @ApiConflictResponse({ description: 'The email already belongs to a user' })
-  create(@Body() dto: CreateUserDto): Promise<UserDto> {
-    return this.users.create(dto);
   }
 
   @Get(':id')

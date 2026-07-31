@@ -63,6 +63,6 @@ const googleStrategyProvider: Provider = {
     JwtStrategy,
     googleStrategyProvider,
   ],
-  exports: [AuthService, AuthRepository, PasswordService, TokenService],
+  exports: [AuthService, AuthRepository, PasswordService, TokenService, AuthCookieService],
 })
 export class AuthModule {}

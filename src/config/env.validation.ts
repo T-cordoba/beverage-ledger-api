@@ -57,7 +57,6 @@ export const envSchema = z
     LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
 
     /** Organization new self-registered users join while org signup is deferred. */
-    DEFAULT_ORGANIZATION_SLUG: z.string().min(1).default('demo'),
 
     GOOGLE_CLIENT_ID: optional(z.string().min(1)),
     GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),

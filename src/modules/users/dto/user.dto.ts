@@ -1,20 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsUrl,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
 import { IsStrongPassword } from '../../../common/decorators/is-strong-password.decorator';
 import { PageMetaDto } from '../../../common/dto/pagination.dto';
 import { UserRole, UserStatus } from '../../../generated/prisma/enums';
-
-const normalizeEmail = ({ value }: { value: unknown }): unknown =>
-  typeof value === 'string' ? value.trim().toLowerCase() : value;
 
 export class UserDto {
   @ApiProperty({ format: 'uuid' })
@@ -80,36 +68,6 @@ export class ChangePasswordDto {
 
   @IsStrongPassword()
   newPassword!: string;
-}
-
-/** Role and status are the admin's call; the invitee never picks their own. */
-export class CreateUserDto {
-  @ApiProperty({ format: 'email' })
-  @Transform(normalizeEmail)
-  @IsEmail()
-  @MaxLength(255)
-  email!: string;
-
-  @ApiProperty()
-  @IsString()
-  @MinLength(2)
-  @MaxLength(120)
-  name!: string;
-
-  @ApiProperty({ enum: UserRole, enumName: 'UserRole', example: UserRole.OPERATOR })
-  @IsEnum(UserRole)
-  role!: UserRole;
-
-  /**
-   * Required until the invitation flow exists. Creating a user without one left
-   * them INVITED, and nothing could ever move them out of it: no endpoint sets
-   * another user's password, and `status: ACTIVE` alone does not let them in
-   * because the login also demands a password hash. That was a dead end with a
-   * green label on it, so the state is no longer reachable.
-   */
-  @ApiProperty({ description: 'At least 12 characters, with lowercase, uppercase and a digit' })
-  @IsStrongPassword()
-  password!: string;
 }
 
 export class UpdateUserDto {

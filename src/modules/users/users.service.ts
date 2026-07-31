@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -16,7 +15,6 @@ import { PasswordService } from '../auth/password.service';
 import { TokenService } from '../auth/token.service';
 import type {
   ChangePasswordDto,
-  CreateUserDto,
   UpdateProfileDto,
   UpdateUserDto,
   UserDto,
@@ -87,32 +85,6 @@ export class UsersService {
       entity: AuditEntity.User,
       entityId: userId,
     });
-  }
-
-  /** @throws {ConflictException} when the email is already used in this organization. */
-  async create(dto: CreateUserDto): Promise<UserDto> {
-    this.assertAssignable(dto.role);
-
-    if (await this.users.existsWithEmail(dto.email)) {
-      throw new ConflictException('That email already belongs to a user');
-    }
-
-    const created = await this.users.create({
-      email: dto.email,
-      name: dto.name,
-      role: dto.role,
-      status: UserStatus.ACTIVE,
-      passwordHash: await this.passwords.hash(dto.password),
-    });
-
-    await this.audit.record({
-      action: AuditAction.UserCreated,
-      entity: AuditEntity.User,
-      entityId: created.id,
-      metadata: { email: created.email, role: created.role, status: created.status },
-    });
-
-    return created;
   }
 
   /**
