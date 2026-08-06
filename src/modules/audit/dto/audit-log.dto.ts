@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsDate, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { PagePaginationDto, PageMetaDto } from '../../../common/dto/pagination.dto';
+import { AuditAction, AuditEntity } from '../audit.actions';
 
 export class AuditLogActorDto {
   @ApiProperty({ format: 'uuid' })
@@ -18,11 +19,16 @@ export class AuditLogDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ example: 'movement.confirmed' })
-  action!: string;
+  /**
+   * Declared as an enum, not a free string: the client builds its filter
+   * dropdown from this union, so an action added here has to reach the UI or the
+   * client stops compiling.
+   */
+  @ApiProperty({ enum: AuditAction, enumName: 'AuditAction', example: 'movement.confirmed' })
+  action!: AuditAction;
 
-  @ApiProperty({ example: 'movement' })
-  entity!: string;
+  @ApiProperty({ enum: AuditEntity, enumName: 'AuditEntity', example: 'movement' })
+  entity!: AuditEntity;
 
   @ApiProperty({ type: String, nullable: true })
   entityId!: string | null;
@@ -49,11 +55,10 @@ export class AuditLogPageDto {
 }
 
 export class ListAuditLogsDto extends PagePaginationDto {
-  @ApiPropertyOptional({ example: 'movement' })
+  @ApiPropertyOptional({ enum: AuditEntity, enumName: 'AuditEntity' })
   @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  entity?: string;
+  @IsEnum(AuditEntity)
+  entity?: AuditEntity;
 
   @ApiPropertyOptional({ description: 'Id of the audited record, to follow one thing over time' })
   @IsOptional()
@@ -61,11 +66,10 @@ export class ListAuditLogsDto extends PagePaginationDto {
   @MaxLength(64)
   entityId?: string;
 
-  @ApiPropertyOptional({ example: 'movement.cancelled' })
+  @ApiPropertyOptional({ enum: AuditAction, enumName: 'AuditAction' })
   @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  action?: string;
+  @IsEnum(AuditAction)
+  action?: AuditAction;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Who performed the action' })
   @IsOptional()

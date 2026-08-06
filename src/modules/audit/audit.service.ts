@@ -60,7 +60,15 @@ export class AuditService {
       to: query.to,
     });
 
-    return toPage(rows, total, query);
+    // The column is text — the trail has to survive an action being renamed or
+    // retired — so the narrowing to the enum happens here, at the DTO boundary.
+    const entries = rows.map((row) => ({
+      ...row,
+      action: row.action as AuditAction,
+      entity: row.entity as AuditEntity,
+    }));
+
+    return toPage(entries, total, query);
   }
 
   /** @throws {Error} when called with no organization in context and none given. */
