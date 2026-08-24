@@ -7,12 +7,6 @@ import { TenantContextService } from '../src/common/tenant/tenant-context.servic
 import { PrismaService } from '../src/infra/prisma/prisma.service';
 import { StockService } from '../src/modules/inventory/stock.service';
 
-/**
- * RF-24 - BACK - kardex(productId, query)
- * Un test por cada camino de la tabla de docs/testing/RF-24-kardex-producto.md.
- * Consulta la base de datos de verdad. El contexto de organizacion lo abre el
- * propio test, que es lo que en produccion hace el guard de autenticacion.
- */
 describe('kardex', () => {
   let app: INestApplicationContext;
   let prisma: PrismaService;
@@ -26,7 +20,6 @@ describe('kardex', () => {
   let productoConMovimientos = '';
   let productoSembrado = '';
 
-  // Abre el contexto de la organizacion alrededor de la llamada al service.
   const comoAdministrador = <T>(accion: () => Promise<T>): Promise<T> =>
     tenant.run(undefined, () => {
       tenant.set({ organizationId, userId, role: 'ORG_ADMIN' });
@@ -61,8 +54,6 @@ describe('kardex', () => {
       return;
     }
 
-    // No habia ninguno en la base, asi que el test siembra el suyo. El nombre
-    // lleva un identificador unico porque (organizationId, name) es unico.
     const categoria = await prisma.category.findFirstOrThrow({ where: { organizationId } });
 
     const sembrado = await prisma.product.create({
@@ -79,7 +70,6 @@ describe('kardex', () => {
   });
 
   afterAll(async () => {
-    // Solo se borra lo que este test creo.
     if (productoSembrado) {
       await prisma.product.delete({ where: { id: productoSembrado } });
     }

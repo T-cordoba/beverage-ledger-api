@@ -5,11 +5,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
-/**
- * RF-19 - BACK - resolveOccurredAt(occurredAt)
- * Un test por cada camino de la tabla de docs/testing/RF-19-borrador-movimiento.md.
- * El metodo es privado, asi que se llama con corchetes.
- */
 describe('resolveOccurredAt', () => {
   let app: INestApplicationContext;
   let movements: MovementsService;

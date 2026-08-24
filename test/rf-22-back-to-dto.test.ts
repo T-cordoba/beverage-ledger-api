@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toDto } from '../src/modules/inventory/repositories/stock.repository';
 
-/**
- * RF-22 - BACK - toDto(row)
- * Un test por cada camino de la tabla de docs/testing/RF-22-existencias-actuales.md.
- * Lo que recibe son filas de producto, que son datos y no dobles de prueba.
- */
 describe('toDto', () => {
-  // Los campos que ninguna decision toca. Cada camino le agrega los tres que si.
   const PRODUCTO = {
     id: 'e3f1c0aa-0000-4000-8000-000000000001',
     name: 'Absolut Blue 750ml',

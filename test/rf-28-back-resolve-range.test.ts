@@ -5,12 +5,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { ReportsService } from '../src/modules/reports/reports.service';
 
-/**
- * RF-28 - BACK - resolveRange(query)
- * Un test por cada camino de la tabla de docs/testing/RF-28-reporte-consumo.md.
- * El service sale del contenedor de Nest, que es de donde sale en produccion.
- * resolveRange es privado, asi que se llama con corchetes.
- */
 describe('resolveRange', () => {
   let app: INestApplicationContext;
   let reports: ReportsService;
