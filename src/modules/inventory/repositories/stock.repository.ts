@@ -16,7 +16,7 @@ interface StockProductRow {
 }
 
 /** A product with no row yet has never moved, which is stock zero. */
-const toDto = (row: StockProductRow): StockLevelDto => {
+export const toDto = (row: StockProductRow): StockLevelDto => {
   const quantityBase = row.stockLevels[0]?.quantityBase ?? 0;
 
   return {
