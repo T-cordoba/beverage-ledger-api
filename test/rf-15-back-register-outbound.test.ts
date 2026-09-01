@@ -1,41 +1,103 @@
+
 import { BadRequestException } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
-import type { INestApplicationContext } from '@nestjs/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AppModule } from '../src/app.module';
+import { describe, expect, it } from 'vitest';
+import { MovementType, MovementUnit } from '../src/generated/prisma/enums';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
 describe('RF-15 - Registrar una salida', () => {
-  let app: INestApplicationContext;
-  let movements: MovementsService;
+  const products = {
+    resolveMovementTargets: async () =>
+      new Map([
+        [
+          'producto-1',
+          {
+            name: 'Producto de prueba',
+            brandName: 'Marca de prueba',
+            caseSize: 12,
+          },
+        ],
+      ]),
+  };
 
-  beforeAll(async () => {
-    app = await NestFactory.createApplicationContext(AppModule, {
-      logger: false,
-    });
-
-    movements = app.get(MovementsService);
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
+  const service = new MovementsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    products as any,
+    {} as any,
+    {} as any,
+  );
 
   it('Camino 1 - una salida con cantidad positiva es válida', () => {
     expect(() =>
-      movements['assertQuantitySign']('OUTBOUND' as any, 6),
+      service['assertQuantitySign'](MovementType.OUTBOUND, 1),
     ).not.toThrow();
   });
 
   it('Camino 2 - una salida con cantidad cero es rechazada', () => {
     expect(() =>
-      movements['assertQuantitySign']('OUTBOUND' as any, 0),
+      service['assertQuantitySign'](MovementType.OUTBOUND, 0),
     ).toThrow(BadRequestException);
   });
 
   it('Camino 3 - una salida con cantidad negativa es rechazada', () => {
     expect(() =>
-      movements['assertQuantitySign']('OUTBOUND' as any, -6),
+      service['assertQuantitySign'](MovementType.OUTBOUND, -1),
     ).toThrow(BadRequestException);
   });
+
+  it('Camino 4 - una salida por botellas genera quantityBase negativa', async () => {
+    const result = await service['toLines'](
+      MovementType.OUTBOUND,
+      'ubicacion-1',
+      null,
+      [
+        {
+          productId: 'producto-1',
+          quantity: 2,
+          unit: MovementUnit.BOTTLE,
+        },
+      ],
+    );
+
+    expect(result).toEqual([
+      {
+        productId: 'producto-1',
+        quantity: 2,
+        unit: MovementUnit.BOTTLE,
+        productNameSnapshot: 'Producto de prueba',
+        brandNameSnapshot: 'Marca de prueba',
+        locationId: 'ubicacion-1',
+        quantityBase: -2,
+      },
+    ]);
+  });
+
+  it('Camino 5 - una salida por cajas convierte la cantidad a unidades base', async () => {
+    const result = await service['toLines'](
+      MovementType.OUTBOUND,
+      'ubicacion-1',
+      null,
+      [
+        {
+          productId: 'producto-1',
+          quantity: 2,
+          unit: MovementUnit.CASE,
+        },
+      ],
+    );
+
+    expect(result).toEqual([
+      {
+        productId: 'producto-1',
+        quantity: 2,
+        unit: MovementUnit.CASE,
+        productNameSnapshot: 'Producto de prueba',
+        brandNameSnapshot: 'Marca de prueba',
+        locationId: 'ubicacion-1',
+        quantityBase: -24,
+      },
+    ]);
+  });
 });
+
