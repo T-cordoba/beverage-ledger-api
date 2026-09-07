@@ -1,72 +1,81 @@
-import { NestFactory } from '@nestjs/core';
-import type { INestApplicationContext } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AppModule } from '../src/app.module';
-import { TenantContextService } from '../src/common/tenant/tenant-context.service';
-import { PrismaService } from '../src/infra/prisma/prisma.service';
+import { describe, expect, it, vi } from 'vitest';
 import { StockService } from '../src/modules/inventory/stock.service';
+import type { LocationsService } from '../src/modules/inventory/locations.service';
+import type { MovementsRepository } from '../src/modules/inventory/repositories/movements.repository';
+import type { StockRepository } from '../src/modules/inventory/repositories/stock.repository';
+import type { ProductsService } from '../src/modules/catalog/products.service';
 
 describe('belowMinimum', () => {
-  let app: INestApplicationContext;
-  let prisma: PrismaService;
-  let tenant: TenantContextService;
-  let stock: StockService;
+  const BODEGA = 'a1b2c3d4-0000-4000-8000-000000000002';
 
-  let organizationId = '';
-  let userId = '';
-  let productoSembrado = '';
+  interface FilaBajoMinimo {
+    productId: string;
+    productName: string;
+    brandName: string | null;
+    categoryName: string;
+    quantityBase: number;
+    caseSize: number;
+    minimumStock: number;
+  }
 
-  const comoAdministrador = <T>(accion: () => Promise<T>): Promise<T> =>
-    tenant.run(undefined, () => {
-      tenant.set({ organizationId, userId, role: 'ORG_ADMIN' });
-      return accion();
-    });
+  const FILA: FilaBajoMinimo = {
+    productId: 'e3f1c0aa-0000-4000-8000-000000000001',
+    productName: 'Absolut Blue 750ml',
+    brandName: 'Absolut',
+    categoryName: 'Vodka',
+    quantityBase: 4,
+    caseSize: 12,
+    minimumStock: 10,
+  };
 
-  beforeAll(async () => {
-    app = await NestFactory.createApplicationContext(AppModule, { logger: false });
-    prisma = app.get(PrismaService);
-    tenant = app.get(TenantContextService);
-    stock = app.get(StockService);
+  const OTRA_FILA = {
+    ...FILA,
+    productId: 'e3f1c0aa-0000-4000-8000-000000000003',
+    productName: 'Bacardi Carta Blanca 750ml',
+    brandName: null,
+    quantityBase: 0,
+  };
 
-    const usuario = await prisma.user.findFirstOrThrow({
-      where: { email: process.env.TEST_USER_EMAIL },
-    });
+  const nuevoServicio = (filas: FilaBajoMinimo[]) => {
+    const stockRepo = {
+      findBelowMinimum: vi.fn().mockResolvedValue(filas),
+    } as unknown as StockRepository;
+    const locations = { resolve: vi.fn().mockResolvedValue(BODEGA) } as unknown as LocationsService;
 
-    organizationId = usuario.organizationId;
-    userId = usuario.id;
-
-    const categoria = await prisma.category.findFirstOrThrow({ where: { organizationId } });
-
-    const sembrado = await prisma.product.create({
-      data: {
-        organizationId,
-        categoryId: categoria.id,
-        name: `Vitest ${randomUUID()}`,
-        caseSize: 12,
-        minimumStock: 10,
-      },
-    });
-
-    productoSembrado = sembrado.id;
-  });
-
-  afterAll(async () => {
-    await prisma.product.delete({ where: { id: productoSembrado } });
-    await app.close();
-  });
+    return {
+      stock: new StockService(
+        stockRepo,
+        {} as MovementsRepository,
+        locations,
+        {} as ProductsService,
+      ),
+      stockRepo,
+    };
+  };
 
   it('Camino 1 - el repositorio no devuelve filas y el arreglo sale vacio', async () => {
-    const rows = await comoAdministrador(() => stock.belowMinimum({ limit: 0 }));
+    // Arrange
+    const { stock, stockRepo } = nuevoServicio([]);
 
+    // Act
+    const rows = await stock.belowMinimum({ limit: 8 });
+
+    // Assert
     expect(rows).toEqual([]);
+    expect(stockRepo.findBelowMinimum).toHaveBeenCalledWith(BODEGA, 8);
   });
 
   it('Camino 2 - el repositorio devuelve filas y todas quedan marcadas bajo minimo', async () => {
-    const rows = await comoAdministrador(() => stock.belowMinimum({ limit: 8 }));
+    // Arrange
+    const { stock, stockRepo } = nuevoServicio([FILA, OTRA_FILA]);
 
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.length).toBeLessThanOrEqual(8);
+    // Act
+    const rows = await stock.belowMinimum({ limit: 8 });
+
+    // Assert
+    expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.isBelowMinimum)).toBe(true);
+    expect(rows[0]).toEqual({ ...FILA, isBelowMinimum: true });
+    expect(stockRepo.findBelowMinimum).toHaveBeenCalledWith(BODEGA, 8);
   });
 });

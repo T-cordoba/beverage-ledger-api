@@ -1,97 +1,70 @@
-import { NestFactory } from '@nestjs/core';
-import type { INestApplicationContext } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AppModule } from '../src/app.module';
-import { TenantContextService } from '../src/common/tenant/tenant-context.service';
-import { PrismaService } from '../src/infra/prisma/prisma.service';
+import { describe, expect, it, vi } from 'vitest';
+import { MovementType, MovementUnit } from '../src/generated/prisma/enums';
 import { StockService } from '../src/modules/inventory/stock.service';
+import type { LocationsService } from '../src/modules/inventory/locations.service';
+import type { MovementsRepository } from '../src/modules/inventory/repositories/movements.repository';
+import type { StockRepository } from '../src/modules/inventory/repositories/stock.repository';
+import type { ProductsService } from '../src/modules/catalog/products.service';
+import type { ProductDto } from '../src/modules/catalog/dto/product.dto';
 
 describe('kardex', () => {
-  let app: INestApplicationContext;
-  let prisma: PrismaService;
-  let tenant: TenantContextService;
-  let stock: StockService;
+  const PRODUCTO = 'e3f1c0aa-0000-4000-8000-000000000001';
+  const BODEGA = 'a1b2c3d4-0000-4000-8000-000000000002';
 
-  let organizationId = '';
-  let userId = '';
+  // El saldo corrido llega como bigint porque es un SUM sobre una columna entera:
+  // es justo la conversion que el metodo hace y lo que el Camino 2 comprueba.
+  const LINEA = {
+    id: '11111111-0000-4000-8000-000000000001',
+    movementId: '22222222-0000-4000-8000-000000000002',
+    movementCode: 'MOV-2026-000042',
+    type: MovementType.OUTBOUND,
+    occurredAt: new Date('2026-08-20T10:00:00.000Z'),
+    quantity: 2,
+    unit: MovementUnit.BOTTLE,
+    quantityBase: -2,
+    balanceAfter: 24n,
+  };
 
-  let productoSinMovimientos = '';
-  let productoConMovimientos = '';
-  let productoSembrado = '';
+  const nuevoServicio = (kardex: () => Promise<{ rows: unknown[]; total: number }>) => {
+    const movements = { kardex: vi.fn(kardex) } as unknown as MovementsRepository;
+    const locations = { resolve: vi.fn().mockResolvedValue(BODEGA) } as unknown as LocationsService;
+    const products = {
+      findOne: vi.fn().mockResolvedValue({ id: PRODUCTO } as ProductDto),
+    } as unknown as ProductsService;
 
-  const comoAdministrador = <T>(accion: () => Promise<T>): Promise<T> =>
-    tenant.run(undefined, () => {
-      tenant.set({ organizationId, userId, role: 'ORG_ADMIN' });
-      return accion();
-    });
-
-  beforeAll(async () => {
-    app = await NestFactory.createApplicationContext(AppModule, { logger: false });
-    prisma = app.get(PrismaService);
-    tenant = app.get(TenantContextService);
-    stock = app.get(StockService);
-
-    const usuario = await prisma.user.findFirstOrThrow({
-      where: { email: process.env.TEST_USER_EMAIL },
-    });
-
-    organizationId = usuario.organizationId;
-    userId = usuario.id;
-
-    const conMovimientos = await prisma.product.findFirstOrThrow({
-      where: { organizationId, movementItems: { some: { movement: { status: 'CONFIRMED' } } } },
-    });
-
-    productoConMovimientos = conMovimientos.id;
-
-    const sinMovimientos = await prisma.product.findFirst({
-      where: { organizationId, movementItems: { none: {} } },
-    });
-
-    if (sinMovimientos) {
-      productoSinMovimientos = sinMovimientos.id;
-      return;
-    }
-
-    const categoria = await prisma.category.findFirstOrThrow({ where: { organizationId } });
-
-    const sembrado = await prisma.product.create({
-      data: {
-        organizationId,
-        categoryId: categoria.id,
-        name: `Vitest ${randomUUID()}`,
-        caseSize: 12,
-      },
-    });
-
-    productoSinMovimientos = sembrado.id;
-    productoSembrado = sembrado.id;
-  });
-
-  afterAll(async () => {
-    if (productoSembrado) {
-      await prisma.product.delete({ where: { id: productoSembrado } });
-    }
-
-    await app.close();
-  });
+    return {
+      stock: new StockService({} as StockRepository, movements, locations, products),
+      movements,
+      locations,
+      products,
+    };
+  };
 
   it('Camino 1 - el producto no tiene lineas en el ledger y la pagina sale vacia', async () => {
-    const page = await comoAdministrador(() =>
-      stock.kardex(productoSinMovimientos, { page: 1, pageSize: 10 }),
-    );
+    // Arrange
+    const { stock, movements, products } = nuevoServicio(async () => ({ rows: [], total: 0 }));
 
+    // Act
+    const page = await stock.kardex(PRODUCTO, { page: 1, pageSize: 10 });
+
+    // Assert
     expect(page.data).toEqual([]);
     expect(page.meta.total).toBe(0);
+    expect(products.findOne).toHaveBeenCalledWith(PRODUCTO);
+    expect(movements.kardex).toHaveBeenCalledWith(PRODUCTO, BODEGA, 0, 10);
   });
 
   it('Camino 2 - el producto tiene lineas y cada una trae su saldo corrido', async () => {
-    const page = await comoAdministrador(() =>
-      stock.kardex(productoConMovimientos, { page: 1, pageSize: 10 }),
-    );
+    // Arrange
+    const { stock } = nuevoServicio(async () => ({ rows: [LINEA], total: 1 }));
 
-    expect(page.data.length).toBeGreaterThan(0);
+    // Act
+    const page = await stock.kardex(PRODUCTO, { page: 1, pageSize: 10 });
+
+    // Assert
+    expect(page.data).toHaveLength(1);
+    expect(page.data[0].balanceAfter).toBe(24);
     expect(typeof page.data[0].balanceAfter).toBe('number');
+    expect(page.meta.total).toBe(1);
   });
 });
