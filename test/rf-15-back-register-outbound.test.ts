@@ -1,12 +1,14 @@
-
 import { BadRequestException } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MovementType, MovementUnit } from '../src/generated/prisma/enums';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
 describe('RF-15 - Registrar una salida', () => {
-  const products = {
-    resolveMovementTargets: async () =>
+  let service: MovementsService;
+  let resolveMovementTargets: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    resolveMovementTargets = vi.fn().mockResolvedValue(
       new Map([
         [
           'producto-1',
@@ -17,49 +19,70 @@ describe('RF-15 - Registrar una salida', () => {
           },
         ],
       ]),
-  };
+    );
 
-  const service = new MovementsService(
-    {} as any,
-    {} as any,
-    {} as any,
-    products as any,
-    {} as any,
-    {} as any,
-  );
+    const products = { resolveMovementTargets };
+
+    service = new MovementsService(
+      {} as any,
+      {} as any,
+      {} as any,
+      products as any,
+      {} as any,
+      {} as any,
+    );
+  });
 
   it('Camino 1 - una salida con cantidad positiva es válida', () => {
-    expect(() =>
-      service['assertQuantitySign'](MovementType.OUTBOUND, 1),
-    ).not.toThrow();
+    // Arrange
+    const type = MovementType.OUTBOUND;
+    const quantity = 1;
+
+    // Act & Assert
+    expect(() => service['assertQuantitySign'](type, quantity)).not.toThrow();
   });
 
   it('Camino 2 - una salida con cantidad cero es rechazada', () => {
-    expect(() =>
-      service['assertQuantitySign'](MovementType.OUTBOUND, 0),
-    ).toThrow(BadRequestException);
+    // Arrange
+    const type = MovementType.OUTBOUND;
+    const quantity = 0;
+
+    // Act & Assert
+    expect(() => service['assertQuantitySign'](type, quantity)).toThrow(
+      BadRequestException,
+    );
   });
 
   it('Camino 3 - una salida con cantidad negativa es rechazada', () => {
-    expect(() =>
-      service['assertQuantitySign'](MovementType.OUTBOUND, -1),
-    ).toThrow(BadRequestException);
+    // Arrange
+    const type = MovementType.OUTBOUND;
+    const quantity = -1;
+
+    // Act & Assert
+    expect(() => service['assertQuantitySign'](type, quantity)).toThrow(
+      BadRequestException,
+    );
   });
 
   it('Camino 4 - una salida por botellas genera quantityBase negativa', async () => {
+    // Arrange
+    const items = [
+      {
+        productId: 'producto-1',
+        quantity: 2,
+        unit: MovementUnit.BOTTLE,
+      },
+    ];
+
+    // Act
     const result = await service['toLines'](
       MovementType.OUTBOUND,
       'ubicacion-1',
       null,
-      [
-        {
-          productId: 'producto-1',
-          quantity: 2,
-          unit: MovementUnit.BOTTLE,
-        },
-      ],
+      items,
     );
 
+    // Assert
     expect(result).toEqual([
       {
         productId: 'producto-1',
@@ -71,22 +94,28 @@ describe('RF-15 - Registrar una salida', () => {
         quantityBase: -2,
       },
     ]);
+    expect(resolveMovementTargets).toHaveBeenCalledTimes(1);
   });
 
   it('Camino 5 - una salida por cajas convierte la cantidad a unidades base', async () => {
+    // Arrange
+    const items = [
+      {
+        productId: 'producto-1',
+        quantity: 2,
+        unit: MovementUnit.CASE,
+      },
+    ];
+
+    // Act
     const result = await service['toLines'](
       MovementType.OUTBOUND,
       'ubicacion-1',
       null,
-      [
-        {
-          productId: 'producto-1',
-          quantity: 2,
-          unit: MovementUnit.CASE,
-        },
-      ],
+      items,
     );
 
+    // Assert
     expect(result).toEqual([
       {
         productId: 'producto-1',
@@ -98,6 +127,6 @@ describe('RF-15 - Registrar una salida', () => {
         quantityBase: -24,
       },
     ]);
+    expect(resolveMovementTargets).toHaveBeenCalledTimes(1);
   });
 });
-

@@ -1,60 +1,46 @@
-
 import { BadRequestException } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
-import type { INestApplicationContext } from '@nestjs/common';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { AppModule } from '../src/app.module';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
 describe('RF-16 - Registrar una entrada', () => {
-  let app: INestApplicationContext;
-  let movements: MovementsService;
+  let service: MovementsService;
+  let resolveMovementTargets: ReturnType<typeof vi.fn>;
 
-  beforeAll(async () => {
-    app = await NestFactory.createApplicationContext(AppModule, {
-      logger: false,
-    });
+  beforeEach(() => {
+    resolveMovementTargets = vi.fn();
 
-    movements = app.get(MovementsService);
+    const products = { resolveMovementTargets };
 
-    vi.spyOn(
-      (movements as any).products,
-      'resolveMovementTargets',
+    service = new MovementsService(
+      {} as any,
+      {} as any,
+      {} as any,
+      products as any,
+      {} as any,
+      {} as any,
     );
   });
 
-  afterAll(async () => {
-    vi.restoreAllMocks();
-    await app.close();
-  });
-
   it('Camino 1 - producto inexistente', async () => {
-    vi.spyOn(
-      (movements as any).products,
-      'resolveMovementTargets',
-    ).mockResolvedValue(new Map());
+    // Arrange
+    resolveMovementTargets.mockResolvedValue(new Map());
 
+    // Act & Assert
     await expect(
-      movements['toLines'](
-        'INBOUND' as any,
-        'location-1',
-        null,
-        [
-          {
-            productId: 'producto-inexistente',
-            quantity: 6,
-            unit: 'UNIT' as any,
-          },
-        ],
-      ),
+      service['toLines']('INBOUND' as any, 'location-1', null, [
+        {
+          productId: 'producto-inexistente',
+
+          quantity: 6,
+          unit: 'UNIT' as any,
+        },
+      ]),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('Camino 2 - TRANSFER sin destinationLocationId', async () => {
-    vi.spyOn(
-      (movements as any).products,
-      'resolveMovementTargets',
-    ).mockResolvedValue(
+    // Arrange
+    resolveMovementTargets.mockResolvedValue(
       new Map([
         [
           'producto-1',
@@ -67,27 +53,22 @@ describe('RF-16 - Registrar una entrada', () => {
       ]),
     );
 
+    // Act & Assert
     await expect(
-      movements['toLines'](
-        'TRANSFER' as any,
-        'location-1',
-        null,
-        [
-          {
-            productId: 'producto-1',
-            quantity: 6,
-            unit: 'UNIT' as any,
-          },
-        ],
-      ),
+      service['toLines']('TRANSFER' as any, 'location-1', null, [
+        {
+          productId: 'producto-1',
+          quantity: 6,
+          unit: 'UNIT' as any,
+        },
+      ]),
     ).rejects.toThrow(BadRequestException);
+
   });
 
   it('Camino 3 - TRANSFER con destinationLocationId', async () => {
-    vi.spyOn(
-      (movements as any).products,
-      'resolveMovementTargets',
-    ).mockResolvedValue(
+    // Arrange
+    resolveMovementTargets.mockResolvedValue(
       new Map([
         [
           'producto-1',
@@ -100,7 +81,8 @@ describe('RF-16 - Registrar una entrada', () => {
       ]),
     );
 
-    const lines = await movements['toLines'](
+    // Act
+    const lines = await service['toLines'](
       'TRANSFER' as any,
       'location-1',
       'location-2',
@@ -113,6 +95,8 @@ describe('RF-16 - Registrar una entrada', () => {
       ],
     );
 
+    // Assert
+
     expect(lines).toHaveLength(2);
     expect(lines[0].locationId).toBe('location-1');
     expect(lines[0].quantityBase).toBe(-6);
@@ -121,10 +105,8 @@ describe('RF-16 - Registrar una entrada', () => {
   });
 
   it('Camino 4 - OUTBOUND', async () => {
-    vi.spyOn(
-      (movements as any).products,
-      'resolveMovementTargets',
-    ).mockResolvedValue(
+    // Arrange
+    resolveMovementTargets.mockResolvedValue(
       new Map([
         [
           'producto-1',
@@ -137,18 +119,16 @@ describe('RF-16 - Registrar una entrada', () => {
       ]),
     );
 
-    const lines = await movements['toLines'](
-      'OUTBOUND' as any,
-      'location-1',
-      null,
-      [
-        {
-          productId: 'producto-1',
-          quantity: 6,
-          unit: 'UNIT' as any,
-        },
-      ],
-    );
+    // Act
+    const lines = await service['toLines']('OUTBOUND' as any, 'location-1', null, [
+      {
+        productId: 'producto-1',
+        quantity: 6,
+        unit: 'UNIT' as any,
+      },
+    ]);
+
+    // Assert
 
     expect(lines).toHaveLength(1);
     expect(lines[0].locationId).toBe('location-1');
@@ -156,10 +136,8 @@ describe('RF-16 - Registrar una entrada', () => {
   });
 
   it('Camino 5 - INBOUND', async () => {
-    vi.spyOn(
-      (movements as any).products,
-      'resolveMovementTargets',
-    ).mockResolvedValue(
+    // Arrange
+    resolveMovementTargets.mockResolvedValue(
       new Map([
         [
           'producto-1',
@@ -172,22 +150,19 @@ describe('RF-16 - Registrar una entrada', () => {
       ]),
     );
 
-    const lines = await movements['toLines'](
-      'INBOUND' as any,
-      'location-1',
-      null,
-      [
-        {
-          productId: 'producto-1',
-          quantity: 6,
-          unit: 'UNIT' as any,
-        },
-      ],
-    );
+    // Act
+    const lines = await service['toLines']('INBOUND' as any, 'location-1', null, [
+      {
+        productId: 'producto-1',
+        quantity: 6,
+        unit: 'UNIT' as any,
+      },
+    ]);
 
+    // Assert
     expect(lines).toHaveLength(1);
     expect(lines[0].locationId).toBe('location-1');
+
     expect(lines[0].quantityBase).toBe(6);
   });
 });
-
