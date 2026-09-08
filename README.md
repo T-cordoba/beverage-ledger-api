@@ -104,12 +104,16 @@ Lo que llega cuando el SaaS sea concreto: alta de organizaciones, facturación, 
 | `pnpm start:dev` | Desarrollo con recarga |
 | `pnpm build` / `start:prod` | Compila y sirve |
 | `pnpm lint` / `typecheck` / `format` | Calidad de código |
+| `pnpm test` | Pruebas unitarias (Vitest) |
+| `pnpm test:coverage` | Las mismas, con `coverage/lcov.info` para SonarCloud |
 | `pnpm db:migrate` | Crea y aplica una migración |
 | `pnpm db:generate` | Regenera el cliente de Prisma |
 | `pnpm db:studio` | Inspector de datos |
 | `pnpm db:reset` | Borra y rehace la base (destructivo) |
 
 El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: tras clonar hay que correr `pnpm db:generate`.
+
+Las pruebas viven en `test/`, una por requisito funcional, y ejercitan cada camino independiente de la unidad con dobles construidos a mano: no tocan la base de datos ni la red. Como cinco de ellas importan los enums de `src/generated/prisma`, hay que correr `pnpm db:generate` antes que `pnpm test` en un clon nuevo.
 
 ---
 
