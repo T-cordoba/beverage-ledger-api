@@ -1,121 +1,222 @@
-import { NestFactory } from '@nestjs/core';
-import type { INestApplicationContext } from '@nestjs/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AppModule } from '../src/app.module';
-import { TenantContextService } from '../src/common/tenant/tenant-context.service';
-import { PrismaService } from '../src/infra/prisma/prisma.service';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditRepository } from '../src/modules/audit/repositories/audit.repository';
 
 describe('AuditRepository.findPage', () => {
-  let app: INestApplicationContext;
-  let prisma: PrismaService;
-  let tenant: TenantContextService;
   let audit: AuditRepository;
-  let organizationId = '';
-  let userId = '';
 
-  const comoAdministrador = <T>(accion: () => Promise<T>): Promise<T> =>
-    tenant.run(undefined, () => {
-      tenant.set({ organizationId, userId, role: 'ORG_ADMIN' });
-      return accion();
-    });
+  let findMany: ReturnType<typeof vi.fn>;
+  let count: ReturnType<typeof vi.fn>;
+  let transaction: ReturnType<typeof vi.fn>;
+  let scopedWhere: ReturnType<typeof vi.fn>;
 
-  beforeAll(async () => {
-    app = await NestFactory.createApplicationContext(AppModule, { logger: false });
-    prisma = app.get(PrismaService);
-    tenant = app.get(TenantContextService);
-    audit = app.get(AuditRepository);
+  beforeEach(() => {
+    findMany = vi.fn();
+    count = vi.fn();
+    transaction = vi.fn();
+    scopedWhere = vi.fn();
 
-    const usuario = await prisma.user.findFirstOrThrow({
-      where: { email: process.env.TEST_USER_EMAIL },
-    });
-    organizationId = usuario.organizationId;
-    userId = usuario.id;
-  });
+    const prisma = {
+      auditLog: {
+        findMany,
+        count,
+      },
+      $transaction: transaction,
+    };
 
-  afterAll(async () => {
-    await app.close();
+    const tenant = {};
+
+    audit = new AuditRepository(
+      prisma as any,
+      tenant as any,
+    );
+
+    vi.spyOn(audit as any, 'scopedWhere').mockImplementation(
+      scopedWhere,
+    );
+
+    scopedWhere.mockImplementation((where: unknown) => where);
   });
 
   it('Camino 1 - sin filtros, retorna resultados paginados', async () => {
-    const result = await comoAdministrador(() => audit.findPage(0, 10, {}));
+    // Arrange
+    const rows = [{ id: 'audit-1' }];
 
-    expect(result.rows).toBeDefined();
-    expect(result.total).toBeGreaterThanOrEqual(0);
-    expect(Array.isArray(result.rows)).toBe(true);
+    transaction.mockResolvedValue([rows, 1]);
+
+    // Act
+    const result = await audit.findPage(0, 10, {});
+
+    // Assert
+    expect(result).toEqual({
+      rows,
+      total: 1,
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 10,
+      }),
+    );
+    expect(count).toHaveBeenCalled();
   });
 
   it('Camino 2 - filtrado por entidad', async () => {
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { entity: 'product' }),
+    // Arrange
+    const rows = [{ id: 'audit-1', entity: 'product' }];
+
+    transaction.mockResolvedValue([rows, 1]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { entity: 'product' },
     );
 
-    expect(result.rows).toBeDefined();
-    for (const row of result.rows) {
-      expect(row.entity).toBe('product');
-    }
+    // Assert
+    expect(result.rows).toEqual(rows);
+    expect(result.total).toBe(1);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      entity: 'product',
+    });
   });
 
   it('Camino 3 - filtrado por entityId', async () => {
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { entityId: 'uuid-inexistente' }),
+    // Arrange
+    transaction.mockResolvedValue([[], 0]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { entityId: 'uuid-inexistente' },
     );
 
+    // Assert
     expect(result.rows).toEqual([]);
     expect(result.total).toBe(0);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      entityId: 'uuid-inexistente',
+    });
   });
 
   it('Camino 4 - filtrado por accion', async () => {
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { action: 'product.created' }),
+    // Arrange
+    const rows = [{ id: 'audit-1', action: 'product.created' }];
+
+    transaction.mockResolvedValue([rows, 1]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { action: 'product.created' },
     );
 
-    expect(result.rows).toBeDefined();
-    for (const row of result.rows) {
-      expect(row.action).toBe('product.created');
-    }
+    // Assert
+    expect(result.rows).toEqual(rows);
+    expect(result.total).toBe(1);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      action: 'product.created',
+    });
   });
 
   it('Camino 5 - filtrado por usuario', async () => {
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { userId }),
+    // Arrange
+    const rows = [{ id: 'audit-1', userId: 'user-1' }];
+
+    transaction.mockResolvedValue([rows, 1]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { userId: 'user-1' },
     );
 
-    expect(result.rows).toBeDefined();
-    expect(result.total).toBeGreaterThanOrEqual(0);
+    // Assert
+    expect(result.rows).toEqual(rows);
+    expect(result.total).toBe(1);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      userId: 'user-1',
+    });
   });
 
   it('Camino 6 - filtrado por rango de fecha completo (from y to)', async () => {
+    // Arrange
     const from = new Date('2026-08-01');
     const to = new Date('2026-08-31');
 
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { from, to }),
+    transaction.mockResolvedValue([[{ id: 'audit-1' }], 1]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { from, to },
     );
 
-    expect(result.rows).toBeDefined();
-    expect(result.total).toBeGreaterThanOrEqual(0);
+    // Assert
+    expect(result.total).toBe(1);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      createdAt: {
+        gte: from,
+        lte: to,
+      },
+    });
   });
 
   it('Camino 7 - filtrado solo por fecha desde (gte)', async () => {
+    // Arrange
     const from = new Date('2026-08-01');
 
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { from }),
+    transaction.mockResolvedValue([[{ id: 'audit-1' }], 1]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { from },
     );
 
-    expect(result.rows).toBeDefined();
-    expect(result.total).toBeGreaterThanOrEqual(0);
+    // Assert
+    expect(result.total).toBe(1);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      createdAt: {
+        gte: from,
+      },
+    });
   });
 
   it('Camino 8 - filtrado solo por fecha hasta (lte)', async () => {
+    // Arrange
     const to = new Date('2026-08-31');
 
-    const result = await comoAdministrador(() =>
-      audit.findPage(0, 10, { to }),
+    transaction.mockResolvedValue([[{ id: 'audit-1' }], 1]);
+
+    // Act
+    const result = await audit.findPage(
+      0,
+      10,
+      { to },
     );
 
-    expect(result.rows).toBeDefined();
-    expect(result.total).toBeGreaterThanOrEqual(0);
+    // Assert
+    expect(result.total).toBe(1);
+
+    expect(scopedWhere).toHaveBeenCalledWith({
+      createdAt: {
+        lte: to,
+      },
+    });
   });
 });

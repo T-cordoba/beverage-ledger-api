@@ -1,105 +1,181 @@
-import { NestFactory } from '@nestjs/core';
-import type { INestApplicationContext } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { AppModule } from '../src/app.module';
-import { TenantContextService } from '../src/common/tenant/tenant-context.service';
-import { PrismaService } from '../src/infra/prisma/prisma.service';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProductsService } from '../src/modules/catalog/products.service';
 import type { UpdateProductDto } from '../src/modules/catalog/dto/product.dto';
 
 describe('ProductsService.update', () => {
-  let app: INestApplicationContext;
-  let prisma: PrismaService;
-  let tenant: TenantContextService;
   let products: ProductsService;
-  let organizationId = '';
-  let userId = '';
-  let productoSembradoId = '';
-  let productoInactivoId = '';
-  let nombreOriginal = '';
 
-  const comoAdministrador = <T>(accion: () => Promise<T>): Promise<T> =>
-    tenant.run(undefined, () => {
-      tenant.set({ organizationId, userId, role: 'ORG_ADMIN' });
-      return accion();
-    });
+  let findById: ReturnType<typeof vi.fn>;
+  let existsWithName: ReturnType<typeof vi.fn>;
+  let categoryExists: ReturnType<typeof vi.fn>;
+  let brandExists: ReturnType<typeof vi.fn>;
+  let update: ReturnType<typeof vi.fn>;
+  let record: ReturnType<typeof vi.fn>;
 
-  beforeAll(async () => {
-    app = await NestFactory.createApplicationContext(AppModule, { logger: false });
-    prisma = app.get(PrismaService);
-    tenant = app.get(TenantContextService);
-    products = app.get(ProductsService);
+  beforeEach(() => {
+    findById = vi.fn();
+    existsWithName = vi.fn();
+    categoryExists = vi.fn();
+    brandExists = vi.fn();
+    update = vi.fn();
+    record = vi.fn();
 
-    const usuario = await prisma.user.findFirstOrThrow({
-      where: { email: process.env.TEST_USER_EMAIL },
-    });
-    organizationId = usuario.organizationId;
-    userId = usuario.id;
-
-    const categoria = await prisma.category.findFirstOrThrow({ where: { organizationId } });
-
-    nombreOriginal = `Vitest-RF09-${randomUUID()}`;
-    const sembrado = await prisma.product.create({
-      data: { organizationId, categoryId: categoria.id, name: nombreOriginal, caseSize: 12 },
-    });
-    productoSembradoId = sembrado.id;
-
-    const inactivo = await prisma.product.create({
-      data: {
-        organizationId,
-        categoryId: categoria.id,
-        name: `Vitest-RF09-inactivo-${randomUUID()}`,
-        caseSize: 12,
-        isActive: false,
-      },
-    });
-    productoInactivoId = inactivo.id;
-  });
-
-  afterAll(async () => {
-    await prisma.product.deleteMany({
-      where: { id: { in: [productoSembradoId, productoInactivoId] } },
-    });
-    await app.close();
+    products = new ProductsService(
+      {
+        findById,
+        existsWithName,
+        categoryExists,
+        brandExists,
+        update,
+      } as any,
+      {
+        record,
+      } as any,
+    );
   });
 
   it('Camino 1 - dto sin nombre ni desactivacion, producto actualizado sin cambios de nombre', async () => {
-    const dto: UpdateProductDto = { origin: 'Escocia' };
-    const resultado = await comoAdministrador(() => products.update(productoSembradoId, dto));
+    // Arrange
+    const producto = {
+      id: 'product-1',
+      name: 'Whisky Escoces',
+      isActive: true,
+    };
 
-    expect(resultado.id).toBe(productoSembradoId);
-    expect(resultado.name).toBe(nombreOriginal);
+    findById.mockResolvedValue(producto);
+    update.mockResolvedValue(undefined);
+    record.mockResolvedValue(undefined);
+
+    const dto: UpdateProductDto = {
+      origin: 'Escocia',
+    };
+
+    // Act
+    const resultado = await products.update('product-1', dto);
+
+    // Assert
+    expect(resultado.id).toBe('product-1');
+    expect(resultado.name).toBe('Whisky Escoces');
     expect(resultado.isActive).toBe(true);
+    expect(update).toHaveBeenCalledWith('product-1', dto);
   });
 
   it('Camino 2 - dto con nombre igual al actual, no hay cambio de nombre', async () => {
-    const dto: UpdateProductDto = { name: nombreOriginal };
-    const resultado = await comoAdministrador(() => products.update(productoSembradoId, dto));
+    // Arrange
+    const producto = {
+      id: 'product-2',
+      name: 'Whisky Original',
+      isActive: true,
+    };
 
-    expect(resultado.name).toBe(nombreOriginal);
+    findById.mockResolvedValue(producto);
+    update.mockResolvedValue(undefined);
+    record.mockResolvedValue(undefined);
+
+    const dto: UpdateProductDto = {
+      name: 'Whisky Original',
+    };
+
+    // Act
+    const resultado = await products.update('product-2', dto);
+
+    // Assert
+    expect(resultado.name).toBe('Whisky Original');
+    expect(existsWithName).not.toHaveBeenCalled();
   });
 
   it('Camino 3 - dto con nombre distinto al actual, nombre actualizado', async () => {
-    const nuevoNombre = `Vitest-RF09-renombrado-${randomUUID()}`;
-    const dto: UpdateProductDto = { name: nuevoNombre };
-    const resultado = await comoAdministrador(() => products.update(productoSembradoId, dto));
+    // Arrange
+    const producto = {
+      id: 'product-3',
+      name: 'Nombre Original',
+      isActive: true,
+    };
 
+    const nuevoNombre = 'Nombre Nuevo';
+
+    findById
+      .mockResolvedValueOnce(producto)
+      .mockResolvedValueOnce({
+        ...producto,
+        name: nuevoNombre,
+      });
+
+    existsWithName.mockResolvedValue(false);
+    update.mockResolvedValue(undefined);
+    record.mockResolvedValue(undefined);
+
+    const dto: UpdateProductDto = {
+      name: nuevoNombre,
+    };
+
+    // Act
+    const resultado = await products.update('product-3', dto);
+
+    // Assert
     expect(resultado.name).toBe(nuevoNombre);
-    nombreOriginal = nuevoNombre;
+    expect(existsWithName).toHaveBeenCalledWith(nuevoNombre, 'product-3');
+    expect(update).toHaveBeenCalledWith('product-3', dto);
   });
 
   it('Camino 4 - dto con isActive=false pero producto ya inactivo, sin cambio efectivo', async () => {
-    const dto: UpdateProductDto = { isActive: false };
-    const resultado = await comoAdministrador(() => products.update(productoInactivoId, dto));
+    // Arrange
+    const producto = {
+      id: 'product-4',
+      name: 'Producto Inactivo',
+      isActive: false,
+    };
 
+    findById
+      .mockResolvedValueOnce(producto)
+      .mockResolvedValueOnce(producto);
+
+    update.mockResolvedValue(undefined);
+    record.mockResolvedValue(undefined);
+
+    const dto: UpdateProductDto = {
+      isActive: false,
+    };
+
+    // Act
+    const resultado = await products.update('product-4', dto);
+
+    // Assert
     expect(resultado.isActive).toBe(false);
+    expect(update).toHaveBeenCalledWith('product-4', dto);
   });
 
   it('Camino 5 - dto con isActive=false y producto activo, producto desactivado', async () => {
-    const dto: UpdateProductDto = { isActive: false };
-    const resultado = await comoAdministrador(() => products.update(productoSembradoId, dto));
+    // Arrange
+    const producto = {
+      id: 'product-5',
+      name: 'Producto Activo',
+      isActive: true,
+    };
 
+    const productoDesactivado = {
+      ...producto,
+      isActive: false,
+    };
+
+    findById
+      .mockResolvedValueOnce(producto)
+      .mockResolvedValueOnce(productoDesactivado);
+
+    update.mockResolvedValue(undefined);
+    record.mockResolvedValue(undefined);
+
+    const dto: UpdateProductDto = {
+      isActive: false,
+    };
+
+    // Act
+    const resultado = await products.update('product-5', dto);
+
+    // Assert
     expect(resultado.isActive).toBe(false);
+    expect(update).toHaveBeenCalledWith('product-5', dto);
+    expect(record).toHaveBeenCalled();
   });
 });
