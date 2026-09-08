@@ -10,6 +10,13 @@ jobs:
   coverage:
     name: Tests and coverage
     runs-on: ubuntu-latest
+    # prisma.config.ts resolves the datasource with `env('DIRECT_URL')`, which
+    # throws when the variable is missing, and `prisma generate` runs from
+    # postinstall. Nothing here connects, so a syntactically valid placeholder
+    # is enough and no database credential belongs in CI.
+    env:
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v4
         with:
