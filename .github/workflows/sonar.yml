@@ -1,0 +1,42 @@
+name: SonarCloud
+
+on:
+  push:
+    branches: [master, test/white-box]
+  pull_request:
+    branches: [master]
+
+jobs:
+  coverage:
+    name: Tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sonar needs the full history to attribute code and compute "new code".
+          fetch-depth: 0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # src/generated is gitignored and five tests import its enums as values,
+      # so the suite cannot even load without this. postinstall covers it too,
+      # but the failure is silent enough to be worth an explicit step.
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
