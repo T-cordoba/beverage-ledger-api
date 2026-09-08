@@ -11,8 +11,6 @@ describe('kardex', () => {
   const PRODUCTO = 'e3f1c0aa-0000-4000-8000-000000000001';
   const BODEGA = 'a1b2c3d4-0000-4000-8000-000000000002';
 
-  // El saldo corrido llega como bigint porque es un SUM sobre una columna entera:
-  // es justo la conversion que el metodo hace y lo que el Camino 2 comprueba.
   const LINEA = {
     id: '11111111-0000-4000-8000-000000000001',
     movementId: '22222222-0000-4000-8000-000000000002',
@@ -41,13 +39,10 @@ describe('kardex', () => {
   };
 
   it('Camino 1 - el producto no tiene lineas en el ledger y la pagina sale vacia', async () => {
-    // Arrange
     const { stock, movements, products } = nuevoServicio(async () => ({ rows: [], total: 0 }));
 
-    // Act
     const page = await stock.kardex(PRODUCTO, { page: 1, pageSize: 10 });
 
-    // Assert
     expect(page.data).toEqual([]);
     expect(page.meta.total).toBe(0);
     expect(products.findOne).toHaveBeenCalledWith(PRODUCTO);
@@ -55,13 +50,10 @@ describe('kardex', () => {
   });
 
   it('Camino 2 - el producto tiene lineas y cada una trae su saldo corrido', async () => {
-    // Arrange
     const { stock } = nuevoServicio(async () => ({ rows: [LINEA], total: 1 }));
 
-    // Act
     const page = await stock.kardex(PRODUCTO, { page: 1, pageSize: 10 });
 
-    // Assert
     expect(page.data).toHaveLength(1);
     expect(page.data[0].balanceAfter).toBe(24);
     expect(typeof page.data[0].balanceAfter).toBe('number');

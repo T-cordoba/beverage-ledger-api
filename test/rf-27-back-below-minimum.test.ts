@@ -54,25 +54,19 @@ describe('belowMinimum', () => {
   };
 
   it('Camino 1 - el repositorio no devuelve filas y el arreglo sale vacio', async () => {
-    // Arrange
     const { stock, stockRepo } = nuevoServicio([]);
 
-    // Act
     const rows = await stock.belowMinimum({ limit: 8 });
 
-    // Assert
     expect(rows).toEqual([]);
     expect(stockRepo.findBelowMinimum).toHaveBeenCalledWith(BODEGA, 8);
   });
 
   it('Camino 2 - el repositorio devuelve filas y todas quedan marcadas bajo minimo', async () => {
-    // Arrange
     const { stock, stockRepo } = nuevoServicio([FILA, OTRA_FILA]);
 
-    // Act
     const rows = await stock.belowMinimum({ limit: 8 });
 
-    // Assert
     expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.isBelowMinimum)).toBe(true);
     expect(rows[0]).toEqual({ ...FILA, isBelowMinimum: true });
