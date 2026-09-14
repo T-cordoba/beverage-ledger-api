@@ -19,6 +19,7 @@ import {
   ProductPageDto,
   UpdateProductDto,
 } from './dto/product.dto';
+import { ProductsAdminService } from './products-admin.service';
 import { ProductsService } from './products.service';
 
 /** Reading is open to every authenticated user: picking a product needs it. */
@@ -26,7 +27,10 @@ import { ProductsService } from './products.service';
 @ApiBearerAuth()
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly products: ProductsService) {}
+  constructor(
+    private readonly products: ProductsService,
+    private readonly admin: ProductsAdminService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List products, searched and filtered server-side' })
@@ -58,7 +62,7 @@ export class ProductsController {
   @ApiConflictResponse({ description: 'The name is already in use' })
   @ApiForbiddenResponse({ description: 'Insufficient permissions' })
   create(@Body() dto: CreateProductDto): Promise<ProductDto> {
-    return this.products.create(dto);
+    return this.admin.create(dto);
   }
 
   /** There is no DELETE: the ledger references products, so retiring one is `isActive: false`. */
@@ -71,6 +75,6 @@ export class ProductsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
   ): Promise<ProductDto> {
-    return this.products.update(id, dto);
+    return this.admin.update(id, dto);
   }
 }
