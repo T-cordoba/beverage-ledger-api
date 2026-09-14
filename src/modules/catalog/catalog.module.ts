@@ -4,6 +4,7 @@ import { BrandsController } from './brands.controller';
 import { BrandsService } from './brands.service';
 import { CategoriesController } from './categories.controller';
 import { CategoriesService } from './categories.service';
+import { ProductsAdminService } from './products-admin.service';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 import { BrandsRepository } from './repositories/brands.repository';
@@ -17,6 +18,7 @@ import { ProductsRepository } from './repositories/products.repository';
     CategoriesService,
     BrandsService,
     ProductsService,
+    ProductsAdminService,
     CategoriesRepository,
     BrandsRepository,
     ProductsRepository,
