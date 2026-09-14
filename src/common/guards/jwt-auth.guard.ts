@@ -32,7 +32,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    await super.canActivate(context);
+    // Passport throws rather than returning false, but the contract allows it
+    // and swallowing it here would authenticate an unauthenticated request.
+    const activated = (await super.canActivate(context)) as boolean;
+
+    if (!activated) {
+      return false;
+    }
 
     const request = context.switchToHttp().getRequest<Request>();
     const user = request.user as AuthenticatedUser;
@@ -43,6 +49,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       role: user.role,
     });
 
-    return true;
+    return activated;
   }
 }
