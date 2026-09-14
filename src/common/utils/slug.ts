@@ -3,6 +3,10 @@
  *
  * Accents are stripped first, so "Ron Añejo" and "Ron Anejo" collide instead of
  * becoming two catalogue entries for the same thing.
+ *
+ * The trailing trim matches single dashes and not runs: the collapse before it
+ * already left at most one at each end, and `-+$` backtracks quadratically over
+ * a long run of dashes.
  */
 export function slugify(value: string): string {
   return value
@@ -10,5 +14,5 @@ export function slugify(value: string): string {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/^-|-$/g, '');
 }

@@ -70,7 +70,7 @@ export class CredentialsService {
     // strategy reads the raw body and LoginDto never touches it.
     const user = await this.users.findByEmail(email.trim().toLowerCase());
 
-    if (!user || !user.passwordHash || this.isLocked(user)) {
+    if (!user?.passwordHash || this.isLocked(user)) {
       await this.passwords.verifyDecoy(password);
       // An unknown email has no organization to file an audit entry under, so
       // only attempts against a real account are recorded.
