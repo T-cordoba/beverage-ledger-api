@@ -25,9 +25,6 @@ describe('UsersService.update', () => {
       update,
     };
 
-    const credentials = {};
-    const passwords = {};
-    
     const tokens = {
       revokeAllForUser,
     };
@@ -36,13 +33,7 @@ describe('UsersService.update', () => {
       record,
     };
 
-    service = new UsersService(
-      users as any,
-      credentials as any,
-      passwords as any,
-      tokens as any,
-      audit as any,
-    );
+    service = new UsersService(users as any, tokens as any, audit as any);
   });
 
   it('Camino 1 - usuario no encontrado, lanza NotFoundException', async () => {
@@ -51,11 +42,7 @@ describe('UsersService.update', () => {
 
     // Act & Assert
     await expect(
-      service.update(
-        'admin-1',
-        '00000000-0000-4000-8000-000000000000',
-        { name: 'Test' },
-      ),
+      service.update('admin-1', '00000000-0000-4000-8000-000000000000', { name: 'Test' }),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -68,13 +55,9 @@ describe('UsersService.update', () => {
     });
 
     // Act & Assert
-    await expect(
-      service.update(
-        'admin-1',
-        'admin-1',
-        { role: UserRole.OPERATOR },
-      ),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.update('admin-1', 'admin-1', { role: UserRole.OPERATOR })).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('Camino 3 - actor modifica su propio estado, lanza BadRequestException', async () => {
@@ -87,11 +70,7 @@ describe('UsersService.update', () => {
 
     // Act & Assert
     await expect(
-      service.update(
-        'admin-1',
-        'admin-1',
-        { status: UserStatus.SUSPENDED },
-      ),
+      service.update('admin-1', 'admin-1', { status: UserStatus.SUSPENDED }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -107,11 +86,7 @@ describe('UsersService.update', () => {
 
     // Act & Assert
     await expect(
-      service.update(
-        'otro-actor',
-        'admin-1',
-        { role: UserRole.OPERATOR },
-      ),
+      service.update('otro-actor', 'admin-1', { role: UserRole.OPERATOR }),
     ).rejects.toThrow(BadRequestException);
 
     expect(countAdmins).toHaveBeenCalledTimes(1);
