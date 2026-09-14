@@ -4,6 +4,7 @@ import { UserRole } from '../src/generated/prisma/enums';
 import { AuditRepository } from '../src/modules/audit/repositories/audit.repository';
 import { StockService } from '../src/modules/inventory/stock.service';
 import { InvitationsService } from '../src/modules/invitations/invitations.service';
+import { ProfileService } from '../src/modules/users/profile.service';
 import { UsersService } from '../src/modules/users/users.service';
 
 /**
@@ -151,5 +152,28 @@ describe('AuditRepository.insert', () => {
 
     expect(createEnTransaccion).toHaveBeenCalledOnce();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProfileService.updateProfile', () => {
+  it('Camino 1 - guarda los datos propios y devuelve el usuario ya actualizado', async () => {
+    const propio = { id: 'usuario-1', email: 'alguien@ejemplo.com', role: UserRole.MANAGER };
+    const update = vi.fn();
+    const findOne = vi.fn().mockResolvedValue(propio);
+
+    const service = new ProfileService(
+      { update } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { findOne } as any,
+    );
+
+    const actualizado = await service.updateProfile('usuario-1', { name: 'Nombre Nuevo' });
+
+    expect(update).toHaveBeenCalledWith('usuario-1', { name: 'Nombre Nuevo' });
+    expect(findOne).toHaveBeenCalledWith('usuario-1');
+    expect(actualizado).toBe(propio);
   });
 });

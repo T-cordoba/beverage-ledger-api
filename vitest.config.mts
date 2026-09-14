@@ -21,6 +21,7 @@ export default defineConfig({
         'src/modules/inventory/stock.service.ts',
         'src/modules/invitations/invitations.service.ts',
         'src/modules/reports/report-range.ts',
+        'src/modules/users/profile.service.ts',
         'src/modules/users/users.service.ts',
       ],
     },
