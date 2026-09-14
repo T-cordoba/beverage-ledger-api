@@ -13,13 +13,14 @@ export default defineConfig({
       // Mirrored by sonar.coverage.exclusions in sonar-project.properties.
       include: [
         'src/modules/audit/repositories/audit.repository.ts',
-        'src/modules/auth/auth.service.ts',
-        'src/modules/catalog/products.service.ts',
+        'src/modules/auth/credentials.service.ts',
+        'src/modules/auth/user.mapper.ts',
+        'src/modules/catalog/products-admin.service.ts',
         'src/modules/inventory/movements.service.ts',
-        'src/modules/inventory/repositories/stock.repository.ts',
+        'src/modules/inventory/repositories/stock.mapper.ts',
         'src/modules/inventory/stock.service.ts',
         'src/modules/invitations/invitations.service.ts',
-        'src/modules/reports/reports.service.ts',
+        'src/modules/reports/report-range.ts',
         'src/modules/users/users.service.ts',
       ],
     },
