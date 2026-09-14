@@ -2,9 +2,9 @@ name: SonarCloud
 
 on:
   push:
-    branches: [master, test/white-box]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
   coverage:

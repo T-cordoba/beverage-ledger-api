@@ -1,10 +1,10 @@
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProductsAdminService } from '../src/modules/catalog/products-admin.service';
 import { ProductsService } from '../src/modules/catalog/products.service';
 import type { UpdateProductDto } from '../src/modules/catalog/dto/product.dto';
 
-describe('ProductsService.update', () => {
-  let products: ProductsService;
+describe('ProductsAdminService.update', () => {
+  let products: ProductsAdminService;
 
   let findById: ReturnType<typeof vi.fn>;
   let existsWithName: ReturnType<typeof vi.fn>;
@@ -21,18 +21,19 @@ describe('ProductsService.update', () => {
     update = vi.fn();
     record = vi.fn();
 
-    products = new ProductsService(
-      {
-        findById,
-        existsWithName,
-        categoryExists,
-        brandExists,
-        update,
-      } as any,
-      {
-        record,
-      } as any,
-    );
+    const repository = {
+      findById,
+      existsWithName,
+      categoryExists,
+      brandExists,
+      update,
+    } as any;
+
+    // The read service is real rather than stubbed: it is a null check over
+    // findById, so mocking it would only restate what findById already says.
+    products = new ProductsAdminService(repository, new ProductsService(repository), {
+      record,
+    } as any);
   });
 
   it('Camino 1 - dto sin nombre ni desactivacion, producto actualizado sin cambios de nombre', async () => {
@@ -95,12 +96,10 @@ describe('ProductsService.update', () => {
 
     const nuevoNombre = 'Nombre Nuevo';
 
-    findById
-      .mockResolvedValueOnce(producto)
-      .mockResolvedValueOnce({
-        ...producto,
-        name: nuevoNombre,
-      });
+    findById.mockResolvedValueOnce(producto).mockResolvedValueOnce({
+      ...producto,
+      name: nuevoNombre,
+    });
 
     existsWithName.mockResolvedValue(false);
     update.mockResolvedValue(undefined);
@@ -127,9 +126,7 @@ describe('ProductsService.update', () => {
       isActive: false,
     };
 
-    findById
-      .mockResolvedValueOnce(producto)
-      .mockResolvedValueOnce(producto);
+    findById.mockResolvedValueOnce(producto).mockResolvedValueOnce(producto);
 
     update.mockResolvedValue(undefined);
     record.mockResolvedValue(undefined);
@@ -159,9 +156,7 @@ describe('ProductsService.update', () => {
       isActive: false,
     };
 
-    findById
-      .mockResolvedValueOnce(producto)
-      .mockResolvedValueOnce(productoDesactivado);
+    findById.mockResolvedValueOnce(producto).mockResolvedValueOnce(productoDesactivado);
 
     update.mockResolvedValue(undefined);
     record.mockResolvedValue(undefined);

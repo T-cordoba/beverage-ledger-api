@@ -32,6 +32,7 @@ import {
   UserDto,
   UserPageDto,
 } from './dto/user.dto';
+import { ProfileService } from './profile.service';
 import { UsersService } from './users.service';
 
 @ApiTags('users')
@@ -39,7 +40,10 @@ import { UsersService } from './users.service';
 @ApiForbiddenResponse({ description: 'Insufficient permissions' })
 @Controller('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly profile: ProfileService,
+  ) {}
 
   @Patch('me')
   @ApiOperation({ summary: 'Update your own profile' })
@@ -48,7 +52,7 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateProfileDto,
   ): Promise<UserDto> {
-    return this.users.updateProfile(user.id, dto);
+    return this.profile.updateProfile(user.id, dto);
   }
 
   @Put('me/password')
@@ -60,7 +64,7 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
-    return this.users.changePassword(user.id, dto);
+    return this.profile.changePassword(user.id, dto);
   }
 
   @Get()

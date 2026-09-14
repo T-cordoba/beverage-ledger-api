@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toDto } from '../src/modules/inventory/repositories/stock.repository';
+import { toDto } from '../src/modules/inventory/repositories/stock.mapper';
 
 describe('toDto', () => {
   const PRODUCTO = {

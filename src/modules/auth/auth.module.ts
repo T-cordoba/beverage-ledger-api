@@ -8,6 +8,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthCookieService } from './auth-cookie.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CredentialsService } from './credentials.service';
 import { PasswordService } from './password.service';
 import { AuthRepository } from './repositories/auth.repository';
 import { RefreshTokenRepository } from './repositories/refresh-token.repository';
@@ -54,6 +55,7 @@ const googleStrategyProvider: Provider = {
   controllers: [AuthController],
   providers: [
     AuthService,
+    CredentialsService,
     TokenService,
     PasswordService,
     AuthCookieService,

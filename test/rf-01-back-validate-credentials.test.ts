@@ -1,11 +1,10 @@
-
 import { UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '../src/modules/auth/auth.service';
+import { CredentialsService } from '../src/modules/auth/credentials.service';
 import { UserStatus } from '../src/generated/prisma/enums';
 
 describe('validateCredentials', () => {
-  let auth: AuthService;
+  let auth: CredentialsService;
   let findByEmail: ReturnType<typeof vi.fn>;
   let verify: ReturnType<typeof vi.fn>;
   let verifyDecoy: ReturnType<typeof vi.fn>;
@@ -15,7 +14,7 @@ describe('validateCredentials', () => {
     verify = vi.fn();
     verifyDecoy = vi.fn();
 
-    auth = new AuthService(
+    auth = new CredentialsService(
       {
         findByEmail,
         markLoginSucceeded: vi.fn(),
@@ -25,7 +24,6 @@ describe('validateCredentials', () => {
         verify,
         verifyDecoy,
       } as any,
-      {} as any,
       {
         record: vi.fn(),
       } as any,
@@ -43,10 +41,7 @@ describe('validateCredentials', () => {
     findByEmail.mockResolvedValue(null);
 
     // Act
-    const resultado = auth.validateCredentials(
-      'no-existe-jamas@ejemplo.com',
-      'cualquier-clave',
-    );
+    const resultado = auth.validateCredentials('no-existe-jamas@ejemplo.com', 'cualquier-clave');
 
     // Assert
     await expect(resultado).rejects.toThrow(UnauthorizedException);
@@ -65,10 +60,7 @@ describe('validateCredentials', () => {
     });
 
     // Act
-    const resultado = auth.validateCredentials(
-      'usuario@example.com',
-      'clave',
-    );
+    const resultado = auth.validateCredentials('usuario@example.com', 'clave');
 
     // Assert
     await expect(resultado).rejects.toThrow(UnauthorizedException);
@@ -87,10 +79,7 @@ describe('validateCredentials', () => {
     });
 
     // Act
-    const resultado = auth.validateCredentials(
-      'bloqueado@example.com',
-      'clave',
-    );
+    const resultado = auth.validateCredentials('bloqueado@example.com', 'clave');
 
     // Assert
     await expect(resultado).rejects.toThrow(UnauthorizedException);
@@ -115,10 +104,7 @@ describe('validateCredentials', () => {
     verify.mockResolvedValue(true);
 
     // Act
-    const resultado = await auth.validateCredentials(
-      'usuario@example.com',
-      'clave',
-    );
+    const resultado = await auth.validateCredentials('usuario@example.com', 'clave');
 
     // Assert
     expect(resultado.email).toBe('usuario@example.com');
@@ -171,13 +157,9 @@ describe('validateCredentials', () => {
     verify.mockResolvedValue(true);
 
     // Act
-    const resultado = auth.validateCredentials(
-      'suspendido@example.com',
-      'clave',
-    );
+    const resultado = auth.validateCredentials('suspendido@example.com', 'clave');
 
     // Assert
     await expect(resultado).rejects.toThrow(UnauthorizedException);
   });
 });
-

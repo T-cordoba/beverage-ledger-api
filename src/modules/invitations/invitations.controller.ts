@@ -44,12 +44,14 @@ import {
   InvitationTokenDto,
   IssuedInvitationDto,
 } from './dto/invitation.dto';
+import { InvitationsAdminService } from './invitations-admin.service';
 import { InvitationsService } from './invitations.service';
 
 @ApiTags('invitations')
 @Controller('invitations')
 export class InvitationsController {
   constructor(
+    private readonly admin: InvitationsAdminService,
     private readonly invitations: InvitationsService,
     private readonly auth: AuthService,
     private readonly cookies: AuthCookieService,
@@ -63,7 +65,7 @@ export class InvitationsController {
   @ApiOperation({ summary: 'List the invitations this organization has issued' })
   @ApiOkResponse({ type: InvitationPageDto })
   list(@Query() query: PagePaginationDto): Promise<InvitationPageDto> {
-    return this.invitations.list(query);
+    return this.admin.list(query);
   }
 
   @Post()
@@ -77,7 +79,7 @@ export class InvitationsController {
     @CurrentUser() actor: AuthenticatedUser,
     @Body() dto: CreateInvitationDto,
   ): Promise<IssuedInvitationDto> {
-    return this.invitations.create(actor, dto);
+    return this.admin.create(actor, dto);
   }
 
   @Delete(':id')
@@ -90,7 +92,7 @@ export class InvitationsController {
   @ApiNotFoundResponse({ description: 'No such invitation in this organization' })
   @ApiConflictResponse({ description: 'Already used or already revoked' })
   revoke(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.invitations.revoke(id);
+    return this.admin.revoke(id);
   }
 
   /**
