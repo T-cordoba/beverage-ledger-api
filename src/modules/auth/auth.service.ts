@@ -92,7 +92,7 @@ export class AuthService {
     const { userId, raw } = await this.tokens.rotate(rawToken, origin);
     const user = await this.users.findById(userId);
 
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    if (user?.status !== UserStatus.ACTIVE) {
       // The account was suspended or deleted while the session was alive.
       await this.tokens.revokeAllForUser(userId);
       throw new UnauthorizedException('Invalid session');
@@ -141,7 +141,7 @@ export class AuthService {
   async resolveTokenSubject(userId: string): Promise<AuthenticatedUser> {
     const user = await this.users.findById(userId);
 
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    if (user?.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Invalid session');
     }
 

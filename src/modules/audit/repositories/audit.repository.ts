@@ -16,6 +16,15 @@ const AUDIT_LOG = {
   user: { select: { id: true, name: true, email: true } },
 } as const;
 
+/**
+ * Drops the undefined values AuditMetadata allows, which Prisma's JSON input
+ * rejects. It lives here because the repository is the Prisma boundary, not in
+ * the service that built the entry.
+ */
+function toJsonObject(metadata: AuditMetadata): object {
+  return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined));
+}
+
 export interface AuditLogRow {
   organizationId: string;
   userId: string | null;
@@ -50,10 +59,7 @@ export class AuditRepository extends BaseRepository {
     const { metadata, ...rest } = row;
 
     await (tx ?? this.prisma).auditLog.create({
-      // The round trip drops the undefined values AuditMetadata allows, which
-      // Prisma's JSON input rejects. It belongs here because the repository is
-      // the Prisma boundary, not in the service that built the entry.
-      data: { ...rest, metadata: JSON.parse(JSON.stringify(metadata)) as object },
+      data: { ...rest, metadata: toJsonObject(metadata) },
     });
   }
 
