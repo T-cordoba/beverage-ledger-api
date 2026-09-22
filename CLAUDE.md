@@ -17,7 +17,7 @@ La fuente de verdad del inventario es un **ledger inmutable** de líneas de movi
 | Backend | `beverage-ledger-api` (este) → `C:\VisualProjects\beverage-ledger-api` | NestJS 11, Prisma 7, Supabase Postgres |
 | Frontend | [`beverage-ledger`](https://github.com/T-cordoba/beverage-ledger) → `C:\VisualProjects\beverage-ledger` | Next.js 15, TypeScript, Tailwind |
 
-Nació de una reescritura: el proyecto original era una sola app de Next.js con dos archivos de SQL sin validación, sin autenticación y sin esquema versionado. Ver §9.
+Nació de una reescritura: el proyecto original era una sola app de Next.js con dos archivos de SQL sin validación, sin autenticación y sin esquema versionado. Ver §10.
 
 ---
 
@@ -400,7 +400,59 @@ Un commit reúne un cambio con una sola intención, con un máximo orientativo d
 
 ---
 
-## 9. Deuda del proyecto original (contexto histórico)
+## 9. Pipeline de CI: Docker, Jenkins y SonarQube
+
+Aparte del workflow de GitHub Actions que publica en SonarCloud, este repo tiene
+un pipeline de Jenkins que corre en local sobre Docker. La infraestructura
+—`docker-compose.devops.yml`, la imagen de Jenkins y la guía de puesta en
+marcha— vive en el repo del front, en `devops/`, porque es una sola para los dos
+pipelines. Aquí solo lo que es propio de la API.
+
+**Nueve etapas**: verificar herramientas · instalar dependencias · análisis
+estático · pruebas con cobertura · SonarQube · Quality Gate · construir imagen ·
+desplegar · comprobar salud. El contenedor se llama `beverage-ledger-api` y
+escucha en `:3001` dentro de la red `devops-net`.
+
+**El `Dockerfile` parte de Debian, no de Alpine.** `argon2` resuelve binarios
+precompilados por plataforma y `pnpm-workspace.yaml` prohíbe los scripts de
+instalación, así que no hay recompilación de respaldo: sobre musl se quedaría sin
+binario.
+
+**El build necesita `DIRECT_URL` aunque no se conecte a nada.**
+`prisma.config.ts` resuelve el datasource con `env('DIRECT_URL')` y lanza si
+falta, y `prisma generate` corre desde `postinstall`. El `Dockerfile` pone un
+placeholder sintácticamente válido, igual que hace el workflow de GitHub. Los
+valores reales llegan por el entorno del contenedor.
+
+**La imagen runtime conserva las dev dependencies.** Podarla a producción sería
+bastante más pequeña, pero también la dejaría sin poder migrar: `prisma migrate
+deploy` necesita el CLI de `prisma`, `tsx` y `dotenv` para leer
+`prisma.config.ts`. La imagen pesa algo más de 1 GB por esa decisión.
+
+**`--env-file` de Docker no quita las comillas.** Un `.env` con
+`NODE_ENV="development"` entrega el valor *con* comillas y la validación Zod
+rechaza media docena de variables de golpe, con un error que no menciona las
+comillas. El Jenkinsfile escribe su archivo temporal con los valores pelados y lo
+borra en `post`. Se usa un archivo y no `-e` porque lo que va por `-e` se lee con
+`docker inspect`.
+
+**`CORS_ORIGINS` del contenedor tiene que incluir `http://localhost:3000`** o el
+front desplegado no habla con la API.
+
+**El pipeline no corre migraciones.** Despliega contra la base que ya está
+migrada y en uso. Si algún día estrena base, el paso es `pnpm db:deploy` antes
+del arranque, no dentro del `CMD`: un fallo debe abortar el despliegue en vez de
+dejar la instancia en bucle de reinicio, que es el mismo criterio que sigue
+`render.yaml`.
+
+**El health check va por nombre de contenedor**, no por `localhost`: el paso corre
+dentro de Jenkins, cuyo `localhost` es el suyo propio. Golpea
+`/api/v1/health`, que ya existía y responde 503 cuando la base no contesta, así
+que la sonda cubre también la dependencia.
+
+---
+
+## 10. Deuda del proyecto original (contexto histórico)
 
 Por qué las convenciones son las que son. Todo esto es lo que había antes:
 
