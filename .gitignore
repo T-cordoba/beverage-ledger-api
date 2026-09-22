@@ -23,3 +23,7 @@ Thumbs.db
 
 # testing
 /coverage
+
+# jenkins workspace
+/reports
+.deploy.env
