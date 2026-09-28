@@ -15,6 +15,7 @@
     "start:prod": "node dist/main",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:regression": "vitest run test/regression",
     "test:clean": "tsx scripts/clean-test-movements.ts",
     "lint": "eslint \"src/**/*.ts\" \"prisma/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" \"prisma/**/*.ts\" --fix",
