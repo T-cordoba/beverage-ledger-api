@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect } from 'chai';
+import { beforeEach, describe, it, vi } from 'vitest';
 import { MovementStatus } from '../src/generated/prisma/enums';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
@@ -48,10 +49,17 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     });
 
     // Act & Assert
-    await expect(
-      service.cancel('movement-1', { reason: 'ya está cancelado' }),
-    ).rejects.toThrow(ConflictException);
-    expect(transition).not.toHaveBeenCalled();
+    try {
+      await service.cancel('movement-1', { reason: 'ya está cancelado' });
+      expect.fail(
+        'Expected cancel to throw for an already cancelled movement',
+      );
+    } catch (error) {
+      expect(error, 'already cancelled error').to.be.instanceOf(
+        ConflictException,
+      );
+    }
+    expect(transition.mock.calls, 'transition calls').to.be.empty;
   });
 
   it('Camino 2 - movimiento no confirmado y transición no reclamada', async () => {
@@ -65,10 +73,17 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     transition.mockResolvedValue(false);
 
     // Act & Assert
-    await expect(
-      service.cancel('movement-2', { reason: 'conflicto' }),
-    ).rejects.toThrow(ConflictException);
-    expect(findLevels).not.toHaveBeenCalled();
+    try {
+      await service.cancel('movement-2', { reason: 'conflicto' });
+      expect.fail(
+        'Expected cancel to throw when the transition is not claimed',
+      );
+    } catch (error) {
+      expect(error, 'unclaimed transition error').to.be.instanceOf(
+        ConflictException,
+      );
+    }
+    expect(findLevels.mock.calls, 'findLevels calls').to.be.empty;
   });
 
   it('Camino 3 - movimiento no confirmado y transición reclamada', async () => {
@@ -92,14 +107,17 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     const result = await service.cancel('movement-3', { reason: 'ok' });
 
     // Assert
-    expect(result.status).toBe(MovementStatus.CANCELLED);
-    expect(applyDelta).not.toHaveBeenCalled();
-    expect(recordIn).toHaveBeenCalledWith(
-      fakeTx,
-      expect.objectContaining({
-        metadata: expect.objectContaining({ stockReverted: false }),
-      }),
+    expect(result.status, 'movement status').to.equal(
+      MovementStatus.CANCELLED,
     );
+    expect(applyDelta.mock.calls, 'stock reversal').to.be.empty;
+    expect(recordIn.mock.calls.length, 'recordIn call count').to.equal(1);
+    const [recordInTx, recordInPayload] = recordIn.mock.calls[0];
+    expect(recordInTx, 'audit transaction').to.equal(fakeTx);
+    expect(
+      recordInPayload.metadata.stockReverted,
+      'stock reverted flag',
+    ).to.equal(false);
   });
 
   it('Camino 4 - movimiento confirmado y transición no reclamada', async () => {
@@ -114,10 +132,17 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     transition.mockResolvedValue(false);
 
     // Act & Assert
-    await expect(
-      service.cancel('movement-4', { reason: 'conflicto' }),
-    ).rejects.toThrow(ConflictException);
-    expect(applyDelta).not.toHaveBeenCalled();
+    try {
+      await service.cancel('movement-4', { reason: 'conflicto' });
+      expect.fail(
+        'Expected cancel to throw when a confirmed movement transition is not claimed',
+      );
+    } catch (error) {
+      expect(error, 'unclaimed confirmed transition error').to.be.instanceOf(
+        ConflictException,
+      );
+    }
+    expect(applyDelta.mock.calls, 'stock reversal').to.be.empty;
   });
 
   it('Camino 5 - movimiento confirmado y transición reclamada', async () => {
@@ -143,7 +168,9 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     const result = await service.cancel('movement-5', { reason: 'ok' });
 
     // Assert
-    expect(result.status).toBe(MovementStatus.CANCELLED);
+    expect(result.status, 'movement status').to.equal(
+      MovementStatus.CANCELLED,
+    );
   });
 
   it('Camino 6 - movimiento confirmado, se revierten los cambios y se registra la anulación', async () => {
@@ -162,17 +189,24 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     await service.cancel('movement-6', { reason: 'anulación de prueba' });
 
     // Assert
-    expect(ensureRows).toHaveBeenCalledWith(['p1'], 'loc-1', fakeTx);
-    expect(applyDelta).toHaveBeenCalledWith(['p1'], 'loc-1', -5, fakeTx);
-    expect(recordIn).toHaveBeenCalledWith(
-      fakeTx,
-      expect.objectContaining({
-        entityId: 'movement-6',
-        metadata: expect.objectContaining({
-          stockReverted: true,
-          reason: 'anulación de prueba',
-        }),
-      }),
+    expect(ensureRows.mock.calls, 'ensureRows call arguments').to.deep.equal([
+      [['p1'], 'loc-1', fakeTx],
+    ]);
+    expect(applyDelta.mock.calls, 'applyDelta call arguments').to.deep.equal([
+      [['p1'], 'loc-1', -5, fakeTx],
+    ]);
+    expect(recordIn.mock.calls.length, 'recordIn call count').to.equal(1);
+    const [recordInTx, recordInPayload] = recordIn.mock.calls[0];
+    expect(recordInTx, 'audit transaction').to.equal(fakeTx);
+    expect(recordInPayload.entityId, 'audit entity id').to.equal(
+      'movement-6',
+    );
+    expect(
+      recordInPayload.metadata.stockReverted,
+      'stock reverted flag',
+    ).to.equal(true);
+    expect(recordInPayload.metadata.reason, 'cancellation reason').to.equal(
+      'anulación de prueba',
     );
   });
 });

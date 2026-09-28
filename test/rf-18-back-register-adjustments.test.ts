@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { expect } from 'chai';
+import { beforeEach, describe, it } from 'vitest';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
 describe('RF-18 - Registrar un ajuste', () => {
@@ -22,9 +23,10 @@ describe('RF-18 - Registrar un ajuste', () => {
     const quantity = 0;
 
     // Act & Assert
-    expect(() => service['assertQuantitySign'](type, quantity)).toThrow(
-      BadRequestException,
-    );
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'zero adjustment quantity',
+    ).to.throw(BadRequestException);
   });
 
   it('Camino 2 - un ajuste con cantidad diferente de cero es válido', () => {
@@ -33,9 +35,10 @@ describe('RF-18 - Registrar un ajuste', () => {
     const quantity = 10;
 
     // Act & Assert
-    expect(() =>
-      service['assertQuantitySign'](type, quantity),
-    ).not.toThrow();
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'non-zero adjustment quantity',
+    ).to.not.throw();
   });
 
   it('Camino 3 - un movimiento diferente de ajuste con cantidad menor o igual a cero es rechazado', () => {
@@ -44,9 +47,10 @@ describe('RF-18 - Registrar un ajuste', () => {
     const quantity = 0;
 
     // Act & Assert
-    expect(() => service['assertQuantitySign'](type, quantity)).toThrow(
-      BadRequestException,
-    );
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'zero non-adjustment quantity',
+    ).to.throw(BadRequestException);
   });
 
   it('Camino 4 - un movimiento diferente de ajuste con cantidad positiva es válido', () => {
@@ -55,8 +59,9 @@ describe('RF-18 - Registrar un ajuste', () => {
     const quantity = 10;
 
     // Act & Assert
-    expect(() =>
-      service['assertQuantitySign'](type, quantity),
-    ).not.toThrow();
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'positive non-adjustment quantity',
+    ).to.not.throw();
   });
 });
