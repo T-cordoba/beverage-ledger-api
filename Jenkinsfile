@@ -21,6 +21,11 @@ pipeline {
     DATABASE_URL = 'postgresql://ci:ci@localhost:5432/ci'
     DIRECT_URL   = 'postgresql://ci:ci@localhost:5432/ci'
 
+    // Node grows until the machine swaps rather than collecting garbage. On a
+    // small box that is the difference between a stage that finishes and one
+    // that runs for tens of minutes with the CPU idle and the disk pinned.
+    NODE_OPTIONS = '--max-old-space-size=1024'
+
     COREPACK_ENABLE_DOWNLOAD_PROMPT = '0'
   }
 
@@ -66,6 +71,10 @@ pipeline {
 
     stage('Tests and coverage') {
       steps {
+        // SonarQube holds over a gigabyte and is not needed until the next
+        // stage, so it stays down through the install and the suite and boots
+        // while these run. Harmless where memory is not scarce.
+        sh 'docker start sonarqube || true'
         sh 'pnpm test:coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml'
       }
       post {
@@ -79,6 +88,16 @@ pipeline {
 
     stage('SonarQube analysis') {
       steps {
+        sh '''
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://sonarqube:9000/api/system/status | grep -q '"status":"UP"'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "SonarQube never came up"
+          exit 1
+        '''
         script {
           def scannerHome = tool 'SonarScanner'
           // Host and token come from the server configured in Jenkins; every
@@ -110,6 +129,8 @@ pipeline {
 
     stage('Docker build') {
       steps {
+        // The gate has answered; the build is the other memory peak.
+        sh 'docker stop sonarqube || true'
         sh '''
           set -e
           docker build -t "${IMAGE}:${BUILD_NUMBER}" -t "${IMAGE}:latest" .
