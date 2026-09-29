@@ -204,7 +204,9 @@ Si una contraseña contiene `/ % @ :` hay que **URL-encodearla** o la conexión 
 
 La API vive en **Render** (`https://beverage-ledger-api.onrender.com`) y el front en **Vercel**, descritos en `render.yaml`. Los secretos van marcados `sync: false`: Render los pide una vez en el panel y nunca tocan el repositorio.
 
-Las migraciones corren en el `buildCommand`, no al arrancar: `migrate deploy` es idempotente y un fallo debe abortar el despliegue en vez de dejar una instancia en bucle de reinicio. El *pre-deploy hook* de Render, que es donde corresponderían, es de pago.
+El servicio corre con **runtime Docker**: Render construye el mismo `Dockerfile` que el pipeline de Jenkins. Tiene el **auto-deploy apagado**, porque despliega Jenkins y lo hace pidiendo por la API de Render el commit exacto que pasó el quality gate (§9).
+
+Las migraciones corren **en Jenkins, justo antes de pedir el deploy**, no al arrancar: `migrate deploy` es idempotente y un fallo debe abortar el despliegue en vez de dejar una instancia en bucle de reinicio. Con runtime Docker ya no hay `buildCommand` donde colgarlas, y el *pre-deploy hook* de Render, que es donde corresponderían, es de pago.
 
 Detalles que costaron un despliegue fallido cada uno:
 
@@ -408,10 +410,18 @@ un pipeline de Jenkins que corre en local sobre Docker. La infraestructura
 marcha— vive en el repo del front, en `devops/`, porque es una sola para los dos
 pipelines. Aquí solo lo que es propio de la API.
 
-**Nueve etapas**: verificar herramientas · instalar dependencias · análisis
+**Once etapas**: verificar herramientas · instalar dependencias · análisis
 estático · pruebas con cobertura · SonarQube · Quality Gate · construir imagen ·
-desplegar · comprobar salud. El contenedor se llama `beverage-ledger-api` y
-escucha en `:3001` dentro de la red `devops-net`.
+desplegar · comprobar salud · migrar producción · desplegar en Render. El
+contenedor local se llama `beverage-ledger-api` y escucha en `:3001` dentro de la
+red `devops-net`; es el smoke test antes de tocar producción.
+
+**El despliegue en Render va por su API, no por un deploy hook.** `POST
+/v1/services/:id/deploys` con `commitId=$GIT_COMMIT`, y después sondea el deploy
+hasta que queda `live` o falla. Un hook desplegaría la punta de la rama, que puede
+no ser lo que se probó. Render construye la imagen él mismo: no se sube la de
+Jenkins a ningún registro, pero el `Dockerfile` es el mismo. Credenciales:
+`render-api-key`, `render-service-id` y `bl-api-prod-direct-url`.
 
 **El `Dockerfile` parte de Debian, no de Alpine.** `argon2` resuelve binarios
 precompilados por plataforma y `pnpm-workspace.yaml` prohíbe los scripts de
@@ -439,11 +449,12 @@ borra en `post`. Se usa un archivo y no `-e` porque lo que va por `-e` se lee co
 **`CORS_ORIGINS` del contenedor tiene que incluir `http://localhost:3000`** o el
 front desplegado no habla con la API.
 
-**El pipeline no corre migraciones.** Despliega contra la base que ya está
-migrada y en uso. Si algún día estrena base, el paso es `pnpm db:deploy` antes
-del arranque, no dentro del `CMD`: un fallo debe abortar el despliegue en vez de
-dejar la instancia en bucle de reinicio, que es el mismo criterio que sigue
-`render.yaml`.
+**El pipeline migra producción antes de desplegar en Render**, con la imagen
+recién construida (`docker run --rm … node_modules/.bin/prisma migrate deploy`)
+y `DIRECT_URL` en un env-file temporal. No va dentro del `CMD`: un fallo debe
+abortar el despliegue en vez de dejar la instancia en bucle de reinicio. Llama al
+binario y no a `pnpm db:deploy` para que corepack no tenga que descargar pnpm
+dentro del contenedor. Si la red bloquea el 5432 de Supabase, esta etapa falla.
 
 **El health check va por nombre de contenedor**, no por `localhost`: el paso corre
 dentro de Jenkins, cuyo `localhost` es el suyo propio. Golpea
