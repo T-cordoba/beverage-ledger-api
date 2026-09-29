@@ -18,9 +18,16 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(40);
-    expect(dto.brandName).toBe('Absolut');
-    expect(dto.isBelowMinimum).toBe(false);
+    expect(dto).toStrictEqual({
+      productId: PRODUCTO.id,
+      productName: 'Absolut Blue 750ml',
+      brandName: 'Absolut',
+      categoryName: 'Vodka',
+      quantityBase: 40,
+      caseSize: 12,
+      minimumStock: null,
+      isBelowMinimum: false,
+    });
   });
 
   it('Camino 2 - hay existencias, hay marca y estan por debajo del minimo', () => {
@@ -28,9 +35,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(40);
-    expect(dto.brandName).toBe('Absolut');
-    expect(dto.isBelowMinimum).toBe(true);
+    expect(dto).toMatchObject({
+      quantityBase: 40,
+      brandName: 'Absolut',
+      isBelowMinimum: true,
+    });
   });
 
   it('Camino 3 - hay existencias, hay marca y estan por encima del minimo', () => {
@@ -38,9 +47,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(40);
-    expect(dto.brandName).toBe('Absolut');
-    expect(dto.isBelowMinimum).toBe(false);
+    expect(dto).toMatchObject({
+      quantityBase: 40,
+      brandName: 'Absolut',
+      isBelowMinimum: false,
+    });
   });
 
   it('Camino 4 - hay existencias, no hay marca y no hay minimo definido', () => {
@@ -48,9 +59,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(40);
-    expect(dto.brandName).toBeNull();
-    expect(dto.isBelowMinimum).toBe(false);
+    expect(dto).toMatchObject({
+      quantityBase: 40,
+      brandName: null,
+      isBelowMinimum: false,
+    });
   });
 
   it('Camino 5 - hay existencias, no hay marca y estan por debajo del minimo', () => {
@@ -58,9 +71,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(40);
-    expect(dto.brandName).toBeNull();
-    expect(dto.isBelowMinimum).toBe(true);
+    expect(dto).toMatchObject({
+      quantityBase: 40,
+      brandName: null,
+      isBelowMinimum: true,
+    });
   });
 
   it('Camino 6 - hay existencias, no hay marca y estan por encima del minimo', () => {
@@ -68,9 +83,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(40);
-    expect(dto.brandName).toBeNull();
-    expect(dto.isBelowMinimum).toBe(false);
+    expect(dto).toMatchObject({
+      quantityBase: 40,
+      brandName: null,
+      isBelowMinimum: false,
+    });
   });
 
   it('Camino 7 - el producto nunca se ha movido, hay marca y no hay minimo definido', () => {
@@ -78,9 +95,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(0);
-    expect(dto.brandName).toBe('Absolut');
-    expect(dto.isBelowMinimum).toBe(false);
+    expect(dto).toMatchObject({
+      quantityBase: 0,
+      brandName: 'Absolut',
+      isBelowMinimum: false,
+    });
   });
 
   it('Camino 8 - el producto nunca se ha movido, hay marca y el cero esta bajo el minimo', () => {
@@ -88,9 +107,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(0);
-    expect(dto.brandName).toBe('Absolut');
-    expect(dto.isBelowMinimum).toBe(true);
+    expect(dto).toMatchObject({
+      quantityBase: 0,
+      brandName: 'Absolut',
+      isBelowMinimum: true,
+    });
   });
 
   it('Camino 9 - el producto nunca se ha movido, no hay marca y no hay minimo definido', () => {
@@ -98,9 +119,11 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(0);
-    expect(dto.brandName).toBeNull();
-    expect(dto.isBelowMinimum).toBe(false);
+    expect(dto).toMatchObject({
+      quantityBase: 0,
+      brandName: null,
+      isBelowMinimum: false,
+    });
   });
 
   it('Camino 10 - el producto nunca se ha movido, no hay marca y el cero esta bajo el minimo', () => {
@@ -108,8 +131,10 @@ describe('toDto', () => {
 
     const dto = toDto(fila);
 
-    expect(dto.quantityBase).toBe(0);
-    expect(dto.brandName).toBeNull();
-    expect(dto.isBelowMinimum).toBe(true);
+    expect(dto).toMatchObject({
+      quantityBase: 0,
+      brandName: null,
+      isBelowMinimum: true,
+    });
   });
 });

@@ -58,8 +58,8 @@ describe('belowMinimum', () => {
 
     const rows = await stock.belowMinimum({ limit: 8 });
 
-    expect(rows).toEqual([]);
-    expect(stockRepo.findBelowMinimum).toHaveBeenCalledWith(BODEGA, 8);
+    expect(rows).toStrictEqual([]);
+    expect(stockRepo.findBelowMinimum).toHaveBeenCalledExactlyOnceWith(BODEGA, 8);
   });
 
   it('Camino 2 - el repositorio devuelve filas y todas quedan marcadas bajo minimo', async () => {
@@ -68,8 +68,11 @@ describe('belowMinimum', () => {
     const rows = await stock.belowMinimum({ limit: 8 });
 
     expect(rows).toHaveLength(2);
-    expect(rows.every((row) => row.isBelowMinimum)).toBe(true);
-    expect(rows[0]).toEqual({ ...FILA, isBelowMinimum: true });
-    expect(stockRepo.findBelowMinimum).toHaveBeenCalledWith(BODEGA, 8);
+    expect(rows).toSatisfy(
+      (filas: typeof rows) => filas.every((row) => row.isBelowMinimum),
+      'todas las filas quedan marcadas bajo minimo',
+    );
+    expect(rows[0]).toStrictEqual({ ...FILA, isBelowMinimum: true });
+    expect(stockRepo.findBelowMinimum).toHaveBeenCalledExactlyOnceWith(BODEGA, 8);
   });
 });

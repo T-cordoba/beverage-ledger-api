@@ -24,15 +24,19 @@ describe('resolve', () => {
     const resuelta = await locations.resolve(BODEGA);
 
     expect(resuelta).toBe(BODEGA);
-    expect(repo.exists).toHaveBeenCalledWith(BODEGA);
+    expect(repo.exists).toHaveBeenCalledExactlyOnceWith(BODEGA);
+    expect(repo.exists).toHaveResolvedWith(true);
     expect(repo.findDefaultId).not.toHaveBeenCalled();
   });
 
   it('Camino 2 - la bodega pedida no es de la organizacion y se rechaza', async () => {
     const { locations, repo } = nuevoServicio(false, BODEGA);
 
-    await expect(locations.resolve(BODEGA_AJENA)).rejects.toThrow(BadRequestException);
-    await expect(locations.resolve(BODEGA_AJENA)).rejects.toThrow('That location does not exist');
+    const intento = locations.resolve(BODEGA_AJENA);
+
+    await expect(intento).rejects.toBeInstanceOf(BadRequestException);
+    await expect(intento).rejects.toThrow('That location does not exist');
+    expect(repo.exists).toHaveResolvedWith(false);
     expect(repo.findDefaultId).not.toHaveBeenCalled();
   });
 
@@ -43,14 +47,17 @@ describe('resolve', () => {
 
     expect(resuelta).toBe(BODEGA);
     expect(repo.exists).not.toHaveBeenCalled();
-    expect(repo.findDefaultId).toHaveBeenCalledTimes(1);
+    expect(repo.findDefaultId).toHaveBeenCalledOnce();
   });
 
   it('Camino 4 - no se pide bodega y la organizacion no tiene una por defecto', async () => {
     const { locations, repo } = nuevoServicio(true, null);
 
-    await expect(locations.resolve()).rejects.toThrow(BadRequestException);
-    await expect(locations.resolve()).rejects.toThrow('The organization has no default location');
+    const intento = locations.resolve();
+
+    await expect(intento).rejects.toBeInstanceOf(BadRequestException);
+    await expect(intento).rejects.toThrow('The organization has no default location');
+    expect(repo.findDefaultId).toHaveResolvedWith(null);
     expect(repo.exists).not.toHaveBeenCalled();
   });
 

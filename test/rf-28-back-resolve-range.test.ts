@@ -21,7 +21,8 @@ describe('resolveRange', () => {
 
     const range = resolveRange({ from, to });
 
-    expect(range).toEqual({ from, to });
+    expect(range).toStrictEqual({ from, to });
+    expect(range.from).toBe(from);
   });
 
   it('Camino 2 - llegan las dos fechas pero el rango esta invertido', () => {
@@ -31,6 +32,7 @@ describe('resolveRange', () => {
     const resolver = () => resolveRange({ from, to });
 
     expect(resolver).toThrow(BadRequestException);
+    expect(resolver).toThrow('The range starts after it ends');
   });
 
   it('Camino 3 - falta la fecha inicial y se toman treinta dias antes de la final', () => {
@@ -57,6 +59,7 @@ describe('resolveRange', () => {
     const resolver = () => resolveRange({ from });
 
     expect(resolver).toThrow(BadRequestException);
+    expect(resolver).toThrow('The range starts after it ends');
   });
 
   it('Camino 6 - no llega ninguna fecha y se toman los ultimos treinta dias', () => {
