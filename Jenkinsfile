@@ -27,6 +27,9 @@ pipeline {
     NODE_OPTIONS = '--max-old-space-size=1024'
 
     COREPACK_ENABLE_DOWNLOAD_PROMPT = '0'
+
+    RENDER_API = 'https://api.render.com/v1'
+    RENDER_URL = 'https://beverage-ledger-api.onrender.com'
   }
 
   stages {
@@ -198,6 +201,81 @@ ENVFILE
         '''
       }
     }
+
+    stage('Migrate production database') {
+      steps {
+        // Render builds the Docker image itself and its pre-deploy hook is a
+        // paid feature, so the schema moves here, before the deploy is
+        // requested: a failed migration stops the pipeline instead of
+        // crash-looping a live instance. The image already ships the prisma
+        // CLI for exactly this; calling the binary skips corepack fetching pnpm.
+        withCredentials([
+          string(credentialsId: 'bl-api-prod-direct-url', variable: 'PROD_DIRECT_URL'),
+        ]) {
+          sh '''
+            set -e
+            umask 077
+            cat > .migrate.env <<ENVFILE
+DIRECT_URL=${PROD_DIRECT_URL}
+ENVFILE
+
+            docker run --rm \
+              --env-file .migrate.env \
+              "${IMAGE}:${BUILD_NUMBER}" \
+              node_modules/.bin/prisma migrate deploy
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to Render') {
+      steps {
+        // The service has auto-deploy off and is asked for this exact commit,
+        // so what goes live is what passed the gate, not whatever the branch
+        // points at by the time Render gets to it.
+        withCredentials([
+          string(credentialsId: 'render-api-key', variable: 'RENDER_API_KEY'),
+          string(credentialsId: 'render-service-id', variable: 'RENDER_SERVICE_ID'),
+        ]) {
+          sh '''
+            set -e
+            DEPLOY_ID=$(curl -fsS -X POST "${RENDER_API}/services/${RENDER_SERVICE_ID}/deploys" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\\"commitId\\":\\"${GIT_COMMIT}\\"}" \
+              | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>console.log(JSON.parse(s).id))')
+            echo "render deploy ${DEPLOY_ID} for ${GIT_COMMIT}"
+
+            # A Docker build on the free plan takes minutes, hence the long window.
+            for attempt in $(seq 1 80); do
+              STATUS=$(curl -fsS "${RENDER_API}/services/${RENDER_SERVICE_ID}/deploys/${DEPLOY_ID}" \
+                -H "Authorization: Bearer ${RENDER_API_KEY}" \
+                | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>console.log(JSON.parse(s).status))')
+              echo "status: ${STATUS}"
+              case "${STATUS}" in
+                live) exit 0 ;;
+                build_failed|update_failed|pre_deploy_failed|canceled|deactivated) exit 1 ;;
+              esac
+              sleep 15
+            done
+            echo "render deploy ${DEPLOY_ID} did not go live in time"
+            exit 1
+          '''
+        }
+        sh '''
+          set -e
+          for attempt in $(seq 1 20); do
+            if curl -fsS "${RENDER_URL}/api/v1/health"; then
+              echo ""
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "${RENDER_URL} never answered /api/v1/health"
+          exit 1
+        '''
+      }
+    }
   }
 
   post {
@@ -205,7 +283,7 @@ ENVFILE
       sh 'docker logs --tail 100 "${CONTAINER}" 2>/dev/null || true'
     }
     always {
-      sh 'rm -f .deploy.env || true'
+      sh 'rm -f .deploy.env .migrate.env || true'
     }
     cleanup {
       sh 'docker image prune -f --filter "dangling=true" || true'
