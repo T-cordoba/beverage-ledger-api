@@ -111,7 +111,7 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
       MovementStatus.CANCELLED,
     );
     expect(applyDelta.mock.calls, 'stock reversal').to.be.empty;
-    expect(recordIn.mock.calls.length, 'recordIn call count').to.equal(1);
+    expect(recordIn.mock.calls, 'recordIn call count').to.have.lengthOf(1);
     const [recordInTx, recordInPayload] = recordIn.mock.calls[0];
     expect(recordInTx, 'audit transaction').to.equal(fakeTx);
     expect(
@@ -195,7 +195,7 @@ describe('RF-20 - Anular un movimiento confirmado', () => {
     expect(applyDelta.mock.calls, 'applyDelta call arguments').to.deep.equal([
       [['p1'], 'loc-1', -5, fakeTx],
     ]);
-    expect(recordIn.mock.calls.length, 'recordIn call count').to.equal(1);
+    expect(recordIn.mock.calls, 'recordIn call count').to.have.lengthOf(1);
     const [recordInTx, recordInPayload] = recordIn.mock.calls[0];
     expect(recordInTx, 'audit transaction').to.equal(fakeTx);
     expect(recordInPayload.entityId, 'audit entity id').to.equal(

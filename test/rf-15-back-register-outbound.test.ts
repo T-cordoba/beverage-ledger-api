@@ -101,9 +101,9 @@ describe('RF-15 - Registrar una salida', () => {
       },
     ]);
     expect(
-      resolveMovementTargets.mock.calls.length,
+      resolveMovementTargets.mock.calls,
       'resolveMovementTargets call count',
-    ).to.equal(1);
+    ).to.have.lengthOf(1);
   });
 
   it('Camino 5 - una salida por cajas convierte la cantidad a unidades base', async () => {
@@ -137,8 +137,8 @@ describe('RF-15 - Registrar una salida', () => {
       },
     ]);
     expect(
-      resolveMovementTargets.mock.calls.length,
+      resolveMovementTargets.mock.calls,
       'resolveMovementTargets call count',
-    ).to.equal(1);
+    ).to.have.lengthOf(1);
   });
 });

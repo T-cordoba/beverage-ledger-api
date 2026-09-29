@@ -56,7 +56,7 @@ describe('RF-21 - Download the movement PDF', () => {
       expect(result.content, 'pdf content')
         .to.be.instanceOf(Buffer)
         .and.to.have.length.above(0);
-      expect(render.mock.calls.length, 'render call count').to.equal(1);
+      expect(render.mock.calls, 'render call count').to.have.lengthOf(1);
       expect(render.mock.calls[0], 'render call arguments').to.deep.equal([
         movement,
         organization,
