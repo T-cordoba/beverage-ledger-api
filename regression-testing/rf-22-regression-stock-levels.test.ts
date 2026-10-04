@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { describe, it } from 'vitest';
-import { toDto, type StockProductRow } from '../../src/modules/inventory/repositories/stock.mapper';
+import { toDto, type StockProductRow } from '../src/modules/inventory/repositories/stock.mapper';
 
 const row = (overrides: Partial<StockProductRow> = {}): StockProductRow => ({
   id: 'product-1',

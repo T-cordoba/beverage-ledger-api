@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { expect } from 'chai';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
-import { resolveRange } from '../../src/modules/reports/report-range';
+import { resolveRange } from '../src/modules/reports/report-range';
 
 const now = new Date('2026-09-01T12:00:00.000Z');
 const day = 24 * 60 * 60 * 1000;

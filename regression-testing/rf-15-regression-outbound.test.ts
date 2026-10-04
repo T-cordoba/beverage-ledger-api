@@ -1,8 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import { expect } from 'chai';
 import { describe, it, vi } from 'vitest';
-import { MovementType, MovementUnit } from '../../src/generated/prisma/enums';
-import { MovementsService } from '../../src/modules/inventory/movements.service';
+import { MovementType, MovementUnit } from '../src/generated/prisma/enums';
+import { MovementsService } from '../src/modules/inventory/movements.service';
 
 /**
  * Builds a fresh MovementsService wired to its own mocks, so each test owns

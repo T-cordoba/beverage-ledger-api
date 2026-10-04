@@ -1,13 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { expect } from 'chai';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
-import { MovementsService } from '../../src/modules/inventory/movements.service';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import type { ProductsService } from '../../src/modules/catalog/products.service';
-import type { TenantContextService } from '../../src/common/tenant/tenant-context.service';
-import type { LocationsService } from '../../src/modules/inventory/locations.service';
-import type { MovementsRepository } from '../../src/modules/inventory/repositories/movements.repository';
-import type { StockRepository } from '../../src/modules/inventory/repositories/stock.repository';
+import { MovementsService } from '../src/modules/inventory/movements.service';
+import type { AuditService } from '../src/modules/audit/audit.service';
+import type { ProductsService } from '../src/modules/catalog/products.service';
+import type { TenantContextService } from '../src/common/tenant/tenant-context.service';
+import type { LocationsService } from '../src/modules/inventory/locations.service';
+import type { MovementsRepository } from '../src/modules/inventory/repositories/movements.repository';
+import type { StockRepository } from '../src/modules/inventory/repositories/stock.repository';
 
 const now = new Date('2026-09-01T12:00:00.000Z');
 

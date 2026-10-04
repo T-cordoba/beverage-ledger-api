@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { expect } from 'chai';
 import { beforeEach, describe, it, vi } from 'vitest';
-import { DocumentsService } from '../../src/modules/documents/documents.service';
+import { DocumentsService } from '../src/modules/documents/documents.service';
 
 /**
  * Builds a fresh DocumentsService wired to its own mocks, so each test owns

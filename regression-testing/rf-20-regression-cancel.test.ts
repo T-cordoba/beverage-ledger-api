@@ -1,8 +1,8 @@
 import { ConflictException } from '@nestjs/common';
 import { expect } from 'chai';
 import { beforeEach, describe, it, vi } from 'vitest';
-import { MovementStatus } from '../../src/generated/prisma/enums';
-import { MovementsService } from '../../src/modules/inventory/movements.service';
+import { MovementStatus } from '../src/generated/prisma/enums';
+import { MovementsService } from '../src/modules/inventory/movements.service';
 
 /**
  * Builds a fresh MovementsService wired to its own mocks, so each test owns

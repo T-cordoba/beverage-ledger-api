@@ -1,13 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { expect } from 'chai';
 import { describe, it, vi } from 'vitest';
-import { LocationsService } from '../../src/modules/inventory/locations.service';
-import { StockService } from '../../src/modules/inventory/stock.service';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import type { ProductsService } from '../../src/modules/catalog/products.service';
-import type { LocationsRepository } from '../../src/modules/inventory/repositories/locations.repository';
-import type { MovementsRepository } from '../../src/modules/inventory/repositories/movements.repository';
-import type { StockRepository } from '../../src/modules/inventory/repositories/stock.repository';
+import { LocationsService } from '../src/modules/inventory/locations.service';
+import { StockService } from '../src/modules/inventory/stock.service';
+import type { AuditService } from '../src/modules/audit/audit.service';
+import type { ProductsService } from '../src/modules/catalog/products.service';
+import type { LocationsRepository } from '../src/modules/inventory/repositories/locations.repository';
+import type { MovementsRepository } from '../src/modules/inventory/repositories/movements.repository';
+import type { StockRepository } from '../src/modules/inventory/repositories/stock.repository';
 
 const defaultLocation = 'location-default';
 const otherLocation = 'location-other';

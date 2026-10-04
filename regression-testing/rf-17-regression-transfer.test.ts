@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { expect } from 'chai';
 import { beforeEach, describe, it, vi } from 'vitest';
-import { MovementsService } from '../../src/modules/inventory/movements.service';
+import { MovementsService } from '../src/modules/inventory/movements.service';
 
 describe('RF-17 Regression - Register a transfer', () => {
   let service: MovementsService;
