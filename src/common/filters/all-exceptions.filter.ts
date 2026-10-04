@@ -78,6 +78,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return this.describePrisma(exception);
     }
 
+    if (this.isPayloadTooLarge(exception)) {
+      return {
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        error: 'Payload Too Large',
+        message: 'Request body is too large',
+      };
+    }
+
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'Internal Server Error',
@@ -118,6 +126,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
           message: 'Internal server error',
         };
     }
+  }
+
+  /**
+   * body-parser rejects an oversized body before any route runs, with an
+   * http-errors object rather than an HttpException, so Nest hands it here as is.
+   */
+  private isPayloadTooLarge(exception: unknown): boolean {
+    if (typeof exception !== 'object' || exception === null) {
+      return false;
+    }
+    const record = exception as Record<string, unknown>;
+    return record.type === 'entity.too.large' || record.status === HttpStatus.PAYLOAD_TOO_LARGE;
   }
 
   private genericMessage(exception: unknown): string {

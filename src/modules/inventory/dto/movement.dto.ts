@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -248,8 +248,13 @@ export class UpdateMovementDto {
   items?: MovementLineInputDto[];
 }
 
+/** Padding is not a justification, so the length rules apply to the trimmed text. */
+const trimString = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim() : value;
+
 export class CancelMovementDto {
   @ApiProperty({ description: 'Why it is being voided. Kept on the audit trail' })
+  @Transform(trimString)
   @IsString()
   @MinLength(4)
   @MaxLength(500)

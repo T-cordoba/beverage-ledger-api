@@ -43,10 +43,11 @@ describe('kardex', () => {
 
     const page = await stock.kardex(PRODUCTO, { page: 1, pageSize: 10 });
 
-    expect(page.data).toEqual([]);
-    expect(page.meta.total).toBe(0);
-    expect(products.findOne).toHaveBeenCalledWith(PRODUCTO);
-    expect(movements.kardex).toHaveBeenCalledWith(PRODUCTO, BODEGA, 0, 10);
+    expect(page.data).toHaveLength(0);
+    expect(page.meta).toMatchObject({ total: 0, pageCount: 1 });
+    expect(products.findOne).toHaveBeenCalledExactlyOnceWith(PRODUCTO);
+    expect(movements.kardex).toHaveBeenCalledExactlyOnceWith(PRODUCTO, BODEGA, 0, 10);
+    expect(vi.mocked(products.findOne)).toHaveBeenCalledBefore(vi.mocked(movements.kardex));
   });
 
   it('Camino 2 - el producto tiene lineas y cada una trae su saldo corrido', async () => {
@@ -55,8 +56,8 @@ describe('kardex', () => {
     const page = await stock.kardex(PRODUCTO, { page: 1, pageSize: 10 });
 
     expect(page.data).toHaveLength(1);
-    expect(page.data[0].balanceAfter).toBe(24);
-    expect(typeof page.data[0].balanceAfter).toBe('number');
-    expect(page.meta.total).toBe(1);
+    expect(page.data[0]).toHaveProperty('balanceAfter', 24);
+    expect(page.data[0].balanceAfter).toBeTypeOf('number');
+    expect(page.meta).toMatchObject({ total: 1, count: 1 });
   });
 });

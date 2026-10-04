@@ -3,28 +3,25 @@
 services:
   - type: web
     name: beverage-ledger-api
-    runtime: node
+    # Render builds the repository's Dockerfile, the same one the Jenkins
+    # pipeline builds and health-checks before asking for this deploy.
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     # Same region as the Supabase project (us-east-2) to keep the round trip short.
     region: ohio
 
-    # Migrations run here, not at start: `migrate deploy` is idempotent and a
-    # failure must abort the deploy instead of crash-looping a live instance.
-    # Render's pre-deploy hook, where this belongs, is a paid feature.
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm db:deploy
-    startCommand: pnpm start:prod
+    # Jenkins requests each deploy for the commit that passed its quality gate
+    # and runs `prisma migrate deploy` right before it, since a Docker service
+    # has no build command to hang it on and the pre-deploy hook is paid. A
+    # push-triggered deploy would skip both.
+    autoDeploy: false
 
     # Answers 503 when Postgres is unreachable, so a bad deploy never goes live.
     healthCheckPath: /api/v1/health
 
     envVars:
-      - key: NODE_VERSION
-        value: '22'
-      # Corepack prompts before downloading the pinned pnpm outside a TTY it
-      # recognizes as CI, and a prompt hangs the build.
-      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
-        value: '0'
-
       - key: NODE_ENV
         value: production
       - key: API_PREFIX
