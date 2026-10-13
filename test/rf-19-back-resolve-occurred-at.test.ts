@@ -36,7 +36,7 @@ describe('resolveOccurredAt', () => {
 
     const resuelta = movements['resolveOccurredAt'](fecha);
 
-    expect(resuelta).toEqual(fecha);
+    expect(resuelta).toBe(fecha);
   });
 
   it('Camino 2 - llega una fecha futura y se rechaza', () => {
@@ -46,6 +46,7 @@ describe('resolveOccurredAt', () => {
     const resolver = () => movements['resolveOccurredAt'](futura);
 
     expect(resolver).toThrow(BadRequestException);
+    expect(resolver).toThrow('A movement cannot be dated in the future');
   });
 
   it('Camino 3 - no llega fecha y se toma el instante actual', () => {
@@ -53,6 +54,7 @@ describe('resolveOccurredAt', () => {
 
     const resuelta = movements['resolveOccurredAt'](undefined);
 
-    expect(resuelta).toEqual(AHORA);
+    expect(resuelta).toBeInstanceOf(Date);
+    expect(resuelta).toStrictEqual(AHORA);
   });
 });

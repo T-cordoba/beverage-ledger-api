@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect } from 'chai';
+import { beforeEach, describe, it, vi } from 'vitest';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
 describe('RF-17 - Registrar un traspaso', () => {
@@ -36,7 +37,7 @@ describe('RF-17 - Registrar un traspaso', () => {
     );
 
     // Assert
-    expect(resultado).toBeNull();
+    expect(resultado, 'non-transfer resolved destination').to.be.null;
   });
 
   it('Camino 2 - movimiento diferente de TRANSFER con destinationLocationId', async () => {
@@ -46,9 +47,17 @@ describe('RF-17 - Registrar un traspaso', () => {
     const dto = { destinationLocationId: 'location-2' };
 
     // Act & Assert
-    await expect(
-      service['resolveDestination'](type, locationId, dto),
-    ).rejects.toThrow(BadRequestException);
+    try {
+      await service['resolveDestination'](type, locationId, dto);
+      expect.fail(
+        'Expected resolveDestination to throw for a non-transfer movement with destinationLocationId',
+      );
+    } catch (error) {
+      expect(
+        error,
+        'non-transfer with destination error',
+      ).to.be.instanceOf(BadRequestException);
+    }
   });
 
   it('Camino 3 - TRANSFER sin destinationLocationId', async () => {
@@ -58,9 +67,16 @@ describe('RF-17 - Registrar un traspaso', () => {
     const dto = {};
 
     // Act & Assert
-    await expect(
-      service['resolveDestination'](type, locationId, dto),
-    ).rejects.toThrow(BadRequestException);
+    try {
+      await service['resolveDestination'](type, locationId, dto);
+      expect.fail(
+        'Expected resolveDestination to throw when destinationLocationId is missing',
+      );
+    } catch (error) {
+      expect(error, 'missing destination location error').to.be.instanceOf(
+        BadRequestException,
+      );
+    }
   });
 
 
@@ -79,8 +95,12 @@ describe('RF-17 - Registrar un traspaso', () => {
     );
 
     // Assert
-    expect(resolve).toHaveBeenCalledWith('location-2');
-    expect(resultado).toEqual({ id: 'location-2' });
+    expect(resolve.mock.calls, 'resolve call arguments').to.deep.equal([
+      ['location-2'],
+    ]);
+    expect(resultado, 'resolved destination').to.deep.equal({
+      id: 'location-2',
+    });
   });
 
   it('Camino 5 - TRANSFER con destinationLocationId igual a locationId', async () => {
@@ -90,8 +110,15 @@ describe('RF-17 - Registrar un traspaso', () => {
     const dto = { destinationLocationId: 'location-1' };
 
     // Act & Assert
-    await expect(
-      service['resolveDestination'](type, locationId, dto),
-    ).rejects.toThrow(BadRequestException);
+    try {
+      await service['resolveDestination'](type, locationId, dto);
+      expect.fail(
+        'Expected resolveDestination to throw when destinationLocationId equals locationId',
+      );
+    } catch (error) {
+      expect(error, 'destination equal to origin error').to.be.instanceOf(
+        BadRequestException,
+      );
+    }
   });
 });

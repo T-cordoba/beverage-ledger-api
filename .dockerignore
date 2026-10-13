@@ -1,0 +1,23 @@
+node_modules
+dist
+coverage
+reports
+
+.git
+.github
+.claude
+.agents
+.windsurf
+
+# Never bake credentials into an image layer.
+.env
+.env.*
+
+src/generated
+test
+*.tsbuildinfo
+*.log
+Dockerfile
+.dockerignore
+Jenkinsfile
+docker-compose.yml

@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect } from 'chai';
+import { beforeEach, describe, it, vi } from 'vitest';
 import { MovementType, MovementUnit } from '../src/generated/prisma/enums';
 import { MovementsService } from '../src/modules/inventory/movements.service';
 
@@ -39,7 +40,10 @@ describe('RF-15 - Registrar una salida', () => {
     const quantity = 1;
 
     // Act & Assert
-    expect(() => service['assertQuantitySign'](type, quantity)).not.toThrow();
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'positive outbound quantity',
+    ).to.not.throw();
   });
 
   it('Camino 2 - una salida con cantidad cero es rechazada', () => {
@@ -48,9 +52,10 @@ describe('RF-15 - Registrar una salida', () => {
     const quantity = 0;
 
     // Act & Assert
-    expect(() => service['assertQuantitySign'](type, quantity)).toThrow(
-      BadRequestException,
-    );
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'zero outbound quantity',
+    ).to.throw(BadRequestException);
   });
 
   it('Camino 3 - una salida con cantidad negativa es rechazada', () => {
@@ -59,9 +64,10 @@ describe('RF-15 - Registrar una salida', () => {
     const quantity = -1;
 
     // Act & Assert
-    expect(() => service['assertQuantitySign'](type, quantity)).toThrow(
-      BadRequestException,
-    );
+    expect(
+      () => service['assertQuantitySign'](type, quantity),
+      'negative outbound quantity',
+    ).to.throw(BadRequestException);
   });
 
   it('Camino 4 - una salida por botellas genera quantityBase negativa', async () => {
@@ -83,7 +89,7 @@ describe('RF-15 - Registrar una salida', () => {
     );
 
     // Assert
-    expect(result).toEqual([
+    expect(result, 'outbound lines by bottle').to.deep.equal([
       {
         productId: 'producto-1',
         quantity: 2,
@@ -94,7 +100,10 @@ describe('RF-15 - Registrar una salida', () => {
         quantityBase: -2,
       },
     ]);
-    expect(resolveMovementTargets).toHaveBeenCalledTimes(1);
+    expect(
+      resolveMovementTargets.mock.calls,
+      'resolveMovementTargets call count',
+    ).to.have.lengthOf(1);
   });
 
   it('Camino 5 - una salida por cajas convierte la cantidad a unidades base', async () => {
@@ -116,7 +125,7 @@ describe('RF-15 - Registrar una salida', () => {
     );
 
     // Assert
-    expect(result).toEqual([
+    expect(result, 'outbound lines by case').to.deep.equal([
       {
         productId: 'producto-1',
         quantity: 2,
@@ -127,6 +136,9 @@ describe('RF-15 - Registrar una salida', () => {
         quantityBase: -24,
       },
     ]);
-    expect(resolveMovementTargets).toHaveBeenCalledTimes(1);
+    expect(
+      resolveMovementTargets.mock.calls,
+      'resolveMovementTargets call count',
+    ).to.have.lengthOf(1);
   });
 });
