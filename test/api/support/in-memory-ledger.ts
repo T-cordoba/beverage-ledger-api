@@ -194,7 +194,7 @@ export class InMemoryLedger {
   }
 
   /** A product, a stock row and a confirmed outbound that belong to another organization. */
-  seedOtherTenant(): void {
+  seedOtherTenant(): string {
     this.catalog.push({
       id: OTHER_TENANT.PRODUCT,
       organizationId: OTHER_TENANT.ORGANIZATION_ID,
@@ -208,7 +208,7 @@ export class InMemoryLedger {
       brandName: null,
     });
     this.stock.set(stockKey(OTHER_TENANT.LOCATION, OTHER_TENANT.PRODUCT), 3);
-    this.insertMovement({
+    return this.insertMovement({
       organizationId: OTHER_TENANT.ORGANIZATION_ID,
       type: MovementType.OUTBOUND,
       locationId: OTHER_TENANT.LOCATION,

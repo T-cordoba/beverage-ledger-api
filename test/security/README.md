@@ -1,7 +1,7 @@
-# Pruebas de seguridad — movimientos de inventario
+# Pruebas de seguridad — movimientos, existencias y reportes
 
-Suite de **security testing** para RF-15, RF-16, RF-17, RF-18, RF-20 y RF-21 de
-Beverage Ledger API. No repite los casos funcionales de `test/api/` ni de
+Suite de **security testing** para RF-15 a RF-24, RF-27 y RF-28 de Beverage
+Ledger API. No repite los casos funcionales de `test/api/` ni de
 `test/regression/`: verifica riesgos de seguridad sobre la implementación real
 (autenticación JWT, matriz de permisos, aislamiento por organización, validación,
 concurrencia y fuga de información en errores).
@@ -28,6 +28,14 @@ pruebas de aislamiento fallarían (comprobado mutando el fake: fallan las 9).
 Las transacciones del fake se serializan y hacen *rollback* ante error, como
 PostgreSQL, para que las aserciones de "no cambió nada" tengan sentido.
 
+Las suites de RF-19, RF-22, RF-23, RF-24, RF-27 y RF-28 corren sobre la
+infraestructura de `test/api/`: el rol llega en el header `x-test-role` y los
+repositorios son los del ledger en memoria, con una segunda organización que
+siembra `seedOtherTenant()`. Pipes, guards, servicios y `AllExceptionsFilter` son
+los reales. Los espías sobre `api.repositories` comprueban qué llegó al repositorio
+y que una entrada rechazada no llegó. `support/safe-error.ts` verifica la forma del
+cuerpo de error y que no lleve trazas, rutas de código ni detalles de la base.
+
 ## Alcance
 
 | RF | Archivo | Riesgos verificados |
@@ -38,6 +46,11 @@ PostgreSQL, para que las aserciones de "no cambió nada" tengan sentido.
 | RF-18 Ajuste | `rf-18-security-adjustment.test.ts` | motivo obligatorio no evadible (espacios, tabs, ausente, PATCH); motivo > 500; inyección SQL en el motivo almacenada como texto; cantidades extremas; stock nunca negativo; OPERATOR no edita ni confirma ajustes |
 | RF-20 Anulación | `rf-20-security-cancel.test.ts` | IDOR entre organizaciones; 404 indistinguible (sin enumeración); manipulación del id; doble anulación concurrente; credenciales inválidas; claim de rol falsificado; body inválido o con campos extra; motivo solo espacios; rollback ante fallo |
 | RF-21 PDF | `rf-21-security-pdf.test.ts` | PDF de otra organización; acceso sin credencial válida; token en query; path traversal / SQL / null byte / script en el id; cabeceras (`Content-Type`, `nosniff`, sin `X-Powered-By`); inyección en `Content-Disposition`; metadatos del PDF sin datos internos; errores no renderizables como HTML; 500 genérico |
+| RF-22 Existencias | `rf-22-security-stock-levels.test.ts` | 401 sin rol, con rol desconocido o vacío, sin tocar el repositorio; query params no declarados (`organizationId`, `isActive`…); más de 200 `productIds`, o con SQL, traversal o comodín; productos de otra organización ausentes de la lista y de `productIds`; filas sin campos internos; `pageSize` desbordado, página negativa o repetida |
+| RF-23 Filtrar | `rf-23-security-filter-stock.test.ts` | `search` con tautología, sentencia apilada, `UNION`, comentarios y comodines `LIKE` llega literal al repositorio; `search` > 120 rechazado antes del repositorio; `search` repetido o con corchetes; inyección en `categoryId`/`locationId`; bodega de otra organización indistinguible de una inexistente; categoría y nombre de otra organización sin resultados |
+| RF-24 Kardex | `rf-24-security-kardex.test.ts` | `productId` con traversal, traversal codificado, SQL, null byte o basura final → 400 sin tocar catálogo ni ledger; producto de otra organización con el mismo 404 que uno inexistente; bodega ajena; params no declarados; `pageSize` desbordado; 401 |
+| RF-27 Bajo mínimo | `rf-27-security-low-stock.test.ts` | `limit` desbordado, negativo, con SQL, fraccionario o repetido → 400 antes de la consulta cruda; `limit` llega como número; params no declarados; productos y bodegas de otra organización; 401 |
+| RF-28 Consumo | `rf-28-security-consumption.test.ts` | OPERATOR → 403 en `consumption`, `summary` y `activity` sin ejecutar ninguna consulta; 401 en las tres; `groupBy` con SQL, nombre de columna o repetido; `limit` y `from` con SQL; `organizationId` no declarado; rango invertido; solo enum, número y fechas llegan a la consulta cruda; salidas de otra organización fuera del reporte |
 
 ## Ejecutar
 
