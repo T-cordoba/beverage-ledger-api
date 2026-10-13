@@ -325,6 +325,6 @@ describe('RF-19 API - Keep and resume a movement draft', () => {
     // Assert
     expect(lookup.status, 'lookup').to.equal(401);
     expect(edit.status, 'edit').to.equal(401);
-    expect(api.ledger.movements.get(draft.body.id)!.note, 'unchanged').to.equal(null);
+    expect(api.ledger.movements.get(draft.body.id)!.note, 'unchanged').to.be.null;
   });
 });

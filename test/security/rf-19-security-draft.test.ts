@@ -118,7 +118,7 @@ describe('RF-19 Security - Keep and resume a movement draft', () => {
       // Assert
       expectSafeError(response, 403);
       expect(response.body.message, 'message').to.equal(`You may not record ${type} movements`);
-      expect(api.ledger.movements.get(draft.body.id)!.note, 'note').to.equal(null);
+      expect(api.ledger.movements.get(draft.body.id)!.note, 'note').to.be.null;
     },
   );
 
@@ -181,7 +181,7 @@ describe('RF-19 Security - Keep and resume a movement draft', () => {
     // Assert
     expectSafeError(response, 404);
     expect(response.body.message, 'message').to.equal('Movement not found');
-    expect(api.ledger.movements.get(foreignDraft)!.note, 'untouched').to.equal(null);
+    expect(api.ledger.movements.get(foreignDraft)!.note, 'untouched').to.be.null;
   });
 
   it("the open-draft lookup never returns another organization's drafts", async () => {
