@@ -162,7 +162,13 @@ export async function startApiTestApp(): Promise<ApiTestApp> {
 
   await app.listen(0, '127.0.0.1');
 
-  const { port } = app.getHttpServer().address() as AddressInfo;
+  // Node closes idle keep-alive sockets after 5s. Rendering a PDF blocks this
+  // same event loop for longer under coverage, and the next fetch then reuses a
+  // socket the server is closing: ECONNRESET. Only the client may close them here.
+  const server = app.getHttpServer();
+  server.keepAliveTimeout = 60_000;
+
+  const { port } = server.address() as AddressInfo;
 
   return {
     app,

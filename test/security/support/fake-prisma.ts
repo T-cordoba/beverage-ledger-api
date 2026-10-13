@@ -10,7 +10,7 @@ import {
 /**
  * In-memory stand-in for PrismaService with TWO organizations.
  *
- * Unlike the api-testing ledger, which replaces the repositories, this replaces
+ * Unlike the test/api ledger, which replaces the repositories, this replaces
  * only the Prisma client: the production repositories (and therefore
  * BaseRepository.scopedWhere, the tenant isolation) run for real on top of it.
  *
