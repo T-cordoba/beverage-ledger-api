@@ -30,10 +30,12 @@ export interface LatencyBudget {
  *
  * They are deliberately loose. Measured locally with the six files running in
  * parallel, the in-memory API answers a single write in ~3-5 ms (median), a full
- * create + confirm in ~4-6 ms, a PDF download in ~10 ms, and renders a 150-line
- * voucher in ~45 ms. Each budget leaves roughly 10x headroom for slower CI
- * agents (Jenkins in Docker, shared CPU) while still failing if an operation
- * regresses to, say, an accidental O(n^2) or a blocking call.
+ * create + confirm in ~4-6 ms, a PDF download in ~10 ms, renders a 150-line
+ * voucher in ~45 ms, and serves a read over the large seed (a 100-row stock page,
+ * a kardex page over 2000 lines, a report over 2000 outbounds) in ~3-8 ms. Each
+ * budget leaves roughly 10x headroom for slower CI agents (Jenkins in Docker,
+ * shared CPU) while still failing if an operation regresses to, say, an
+ * accidental O(n^2) or a blocking call.
  */
 export const BUDGETS = {
   /** POST /movements (draft) and POST /movements/:id/confirm|cancel, each. */
@@ -52,6 +54,12 @@ export const BUDGETS = {
   cancelBurstMs: 1500,
   /** Wall-clock time for a whole burst of concurrent PDF downloads. */
   pdfBurstMs: 3000,
+  /** One read over the large seed: a stock page, a kardex page, the low list or a report. */
+  read: { median: 50, max: 250 } satisfies LatencyBudget,
+  /** PATCH of a draft carrying LARGE_DRAFT_LINES lines, replaced wholesale. */
+  largeDraftPatch: { median: 100, max: 500 } satisfies LatencyBudget,
+  /** Wall-clock time for a whole burst of concurrent reads. */
+  readBurstMs: 1500,
 } as const;
 
 /** Small, controlled volumes: enough samples for a stable median, never a load test. */
@@ -68,6 +76,14 @@ export const VOLUME = {
   pdfBurst: 10,
   /** Lines in the voucher used for the multi-page rendering test. */
   largeVoucherLines: 150,
+  /** Active products seeded for the stock, low-stock and report reads. */
+  catalogSize: 1000,
+  /** Confirmed ledger lines behind the kardex being read. */
+  kardexLines: 2000,
+  /** Confirmed outbounds behind the consumption report. */
+  reportMovements: 2000,
+  /** Lines in the draft edited by the PATCH test. */
+  largeDraftLines: 200,
 } as const;
 
 /** Elapsed milliseconds of one awaited call, with its result. */

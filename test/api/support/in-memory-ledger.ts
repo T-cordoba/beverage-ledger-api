@@ -614,10 +614,12 @@ export class InMemoryLedger {
 
       catalogueSnapshot: async () => {
         const active = this.ownProducts().filter((product) => product.isActive);
-        const onHandOf = (productId: string) =>
-          [...this.stock.entries()]
-            .filter(([key]) => key.endsWith(`:${productId}`))
-            .reduce((sum, [, quantity]) => sum + quantity, 0);
+        const onHand = new Map<string, number>();
+        for (const [key, quantity] of this.stock) {
+          const productId = key.slice(key.indexOf(':') + 1);
+          onHand.set(productId, (onHand.get(productId) ?? 0) + quantity);
+        }
+        const onHandOf = (productId: string) => onHand.get(productId) ?? 0;
 
         return {
           unitsOnHand: active.reduce((sum, product) => sum + onHandOf(product.id), 0),
@@ -630,6 +632,7 @@ export class InMemoryLedger {
       },
 
       consumption: async (from: Date, to: Date, groupBy: ConsumptionGrouping, limit: number) => {
+        const catalog = new Map(this.catalog.map((product) => [product.id, product]));
         const groups = new Map<
           string,
           { id: string; name: string; quantityBase: number; movements: Set<string> }
@@ -641,7 +644,7 @@ export class InMemoryLedger {
           }
 
           for (const item of movement.items) {
-            const product = this.catalog.find((candidate) => candidate.id === item.productId)!;
+            const product = catalog.get(item.productId)!;
             const [id, name] =
               groupBy === ConsumptionGrouping.Category
                 ? [product.categoryId, product.categoryName]
