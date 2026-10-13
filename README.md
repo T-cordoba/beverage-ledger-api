@@ -117,7 +117,7 @@ El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: t
 
 ## Pruebas
 
-El repositorio tiene cinco suites, todas con **Vitest**. Ninguna necesita PostgreSQL ni red: las de caja blanca y regresión usan dobles construidos a mano, y las de API, rendimiento y seguridad levantan la aplicación Nest real en memoria, en un puerto efímero, y le hablan por HTTP con `fetch`.
+El repositorio tiene seis suites, todas con **Vitest**. Cinco no necesitan PostgreSQL ni red: las de caja blanca y regresión usan dobles construidos a mano, y las de API, rendimiento y seguridad levantan la aplicación Nest real en memoria, en un puerto efímero, y le hablan por HTTP con `fetch`. La E2E sí necesita la API levantada con su base de datos, y sin `E2E_API_URL` se omite.
 
 | Tipo | Ubicación | Pruebas | Comando |
 |---|---|---:|---|
@@ -126,6 +126,7 @@ El repositorio tiene cinco suites, todas con **Vitest**. Ninguna necesita Postgr
 | API | `test/api/` | 161 | `pnpm test:api` |
 | Rendimiento | `test/performance/` | 41 | `pnpm test:performance` |
 | Seguridad | `test/security/` | 204 | `pnpm test:security` |
+| E2E (Screenplay) | `test/e2e/` | 18 | `pnpm vitest run test/e2e` con `E2E_API_URL` |
 
 ### Qué necesitan
 
@@ -148,7 +149,7 @@ Las pruebas en sí no leen ninguna variable de entorno.
 ### Cómo ejecutarlas
 
 ```bash
-pnpm test                    # todas las suites (602 pruebas)
+pnpm test                    # todas las suites; la E2E se omite sin E2E_API_URL
 pnpm test:coverage           # lo mismo + coverage/lcov.info (lo que publica Sonar)
 
 pnpm test:regression         # solo regresión
@@ -169,6 +170,7 @@ pnpm vitest run test/performance --reporter=verbose   # con el detalle de cada m
 - **API** sustituye los repositorios de Prisma por un ledger en memoria y el guard JWT por uno que lee el rol del header `x-test-role`. Pipes, guards de permisos, servicios y el filtro de errores son los de producción. Detalle en `test/api/README.md`.
 - **Rendimiento** mide la capa de aplicación, no PostgreSQL, contra presupuestos holgados (`test/performance/support/perf-metrics.ts`). En una máquina muy cargada puede fallar por tiempo; conviene repetir la corrida antes de dar por mala la prueba.
 - **Seguridad** usa dos infraestructuras: para RF-15 a RF-18, RF-20 y RF-21, JWT firmados de verdad y los repositorios reales sobre un Prisma en memoria con dos organizaciones; para RF-19, RF-22 a RF-24, RF-27 y RF-28, la de `test/api/`. Detalle en `test/security/README.md`.
+- **E2E** recorre RF-15 a RF-18, RF-20 y RF-21 contra la API real con PostgreSQL, login y transacciones de producción. Escribe movimientos y los anula al final, así que contra una base remota se niega salvo con `E2E_ALLOW_REMOTE_WRITES=true`. Puesta en marcha y credenciales en `test/e2e/README.md`.
 - La cobertura que se publica en Sonar es solo la de caja blanca: `coverage.include` de `vitest.config.mts` lista esos módulos y `sonar.coverage.exclusions` escribe el complemento.
 
 ---
