@@ -31,8 +31,13 @@ import { MovementsService } from '../../../src/modules/inventory/movements.servi
 import { LocationsRepository } from '../../../src/modules/inventory/repositories/locations.repository';
 import { MovementsRepository } from '../../../src/modules/inventory/repositories/movements.repository';
 import { StockRepository } from '../../../src/modules/inventory/repositories/stock.repository';
+import { StockController } from '../../../src/modules/inventory/stock.controller';
+import { StockService } from '../../../src/modules/inventory/stock.service';
 import { OrganizationsRepository } from '../../../src/modules/organizations/repositories/organizations.repository';
 import { OrganizationsService } from '../../../src/modules/organizations/organizations.service';
+import { ReportsController } from '../../../src/modules/reports/reports.controller';
+import { ReportsService } from '../../../src/modules/reports/reports.service';
+import { ReportsRepository } from '../../../src/modules/reports/repositories/reports.repository';
 import { InMemoryLedger, ORGANIZATION_ID, USERS } from './in-memory-ledger';
 
 /** Same prefix the deployed API uses (API_PREFIX=api/v1). */
@@ -77,9 +82,23 @@ class TestAuthGuard implements CanActivate {
   }
 }
 
-function buildModule(ledger: InMemoryLedger) {
+function repositoriesOf(ledger: InMemoryLedger) {
+  return {
+    movements: ledger.movementsRepository(),
+    stock: ledger.stockRepository(),
+    locations: ledger.locationsRepository(),
+    products: ledger.productsRepository(),
+    reports: ledger.reportsRepository(),
+    organizations: ledger.organizationsRepository(),
+    audit: ledger.auditRepository(),
+  };
+}
+
+export type FakeRepositories = ReturnType<typeof repositoriesOf>;
+
+function buildModule(repositories: FakeRepositories) {
   @Module({
-    controllers: [MovementsController, DocumentsController],
+    controllers: [MovementsController, DocumentsController, StockController, ReportsController],
     providers: [
       TenantContextService,
       MovementsService,
@@ -89,12 +108,15 @@ function buildModule(ledger: InMemoryLedger) {
       OrganizationsService,
       DocumentsService,
       MovementPdfService,
-      { provide: MovementsRepository, useValue: ledger.movementsRepository() },
-      { provide: StockRepository, useValue: ledger.stockRepository() },
-      { provide: LocationsRepository, useValue: ledger.locationsRepository() },
-      { provide: ProductsRepository, useValue: ledger.productsRepository() },
-      { provide: OrganizationsRepository, useValue: ledger.organizationsRepository() },
-      { provide: AuditRepository, useValue: ledger.auditRepository() },
+      StockService,
+      ReportsService,
+      { provide: MovementsRepository, useValue: repositories.movements },
+      { provide: StockRepository, useValue: repositories.stock },
+      { provide: LocationsRepository, useValue: repositories.locations },
+      { provide: ProductsRepository, useValue: repositories.products },
+      { provide: ReportsRepository, useValue: repositories.reports },
+      { provide: OrganizationsRepository, useValue: repositories.organizations },
+      { provide: AuditRepository, useValue: repositories.audit },
       // Same order as AppModule: authenticate, then authorize.
       { provide: APP_GUARD, useClass: TestAuthGuard },
       { provide: APP_GUARD, useClass: PermissionsGuard },
@@ -112,6 +134,8 @@ function buildModule(ledger: InMemoryLedger) {
 export interface ApiTestApp {
   app: INestApplication;
   ledger: InMemoryLedger;
+  /** The exact objects Nest injected, so a test can spy on what reached a repository. */
+  repositories: FakeRepositories;
   baseUrl: string;
   close(): Promise<void>;
 }
@@ -122,7 +146,8 @@ export interface ApiTestApp {
  */
 export async function startApiTestApp(): Promise<ApiTestApp> {
   const ledger = new InMemoryLedger();
-  const app = await NestFactory.create(buildModule(ledger), { logger: false });
+  const repositories = repositoriesOf(ledger);
+  const app = await NestFactory.create(buildModule(repositories), { logger: false });
 
   app.setGlobalPrefix(API_PREFIX.slice(1));
   app.useGlobalPipes(
@@ -142,6 +167,7 @@ export async function startApiTestApp(): Promise<ApiTestApp> {
   return {
     app,
     ledger,
+    repositories,
     baseUrl: `http://127.0.0.1:${port}${API_PREFIX}`,
     close: () => app.close(),
   };
@@ -192,6 +218,8 @@ export function apiClient(baseUrl: string) {
     get: <T = any>(path: string, role?: UserRole | null) => send<T>('GET', path, { role }),
     post: <T = any>(path: string, body?: unknown, role?: UserRole | null) =>
       send<T>('POST', path, { body, role }),
+    patch: <T = any>(path: string, body?: unknown, role?: UserRole | null) =>
+      send<T>('PATCH', path, { body, role }),
   };
 }
 
